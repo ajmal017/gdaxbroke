@@ -13,3 +13,11 @@ per-order, you need to track a map of executions (with crazy string IDs) to orde
 You might try to use openOrder.orderState messages, but there are dupes and the commissions are often giant
 placeholder values (and some other dollar values are strings...), and they don't have PNL.
 
+NEXT:
+-----
+
+
+
+
+Make sure instrument/contract handling is consistent everywhere
+Use conIDs for ticker IDs.

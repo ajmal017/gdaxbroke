@@ -16,8 +16,5 @@ placeholder values (and some other dollar values are strings...), and they don't
 NEXT:
 -----
 
-
-
-
-Make sure instrument/contract handling is consistent everywhere
-Use conIDs for ticker IDs.
+Prettier order display
+Order cancel and cancel_all

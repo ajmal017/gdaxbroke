@@ -3,21 +3,30 @@ Setup for IBroke.
 """
 
 from setuptools import setup
-from os import path
-_readme = path.join(path.abspath(path.dirname(__file__)), 'README.md')
+import os.path
+import re
+
+HERE = os.path.abspath(os.path.dirname(__file__))
 try:        # Workaround lack of Markdown support on PyPI
     import pypandoc
-    long_description = pypandoc.convert(_readme, 'rst')
+    long_description = pypandoc.convert(os.path.join(HERE, 'README.md'), 'rst')
 except (IOError, ImportError):
-    long_description = open(_readme).read()
+    long_description = open(os.path.join(HERE, 'README.md')).read()
 
 
-__version__ = "0.0.2"
+def find_version(*file_paths):
+    """:Return: the __version__ string from the path components `file_paths`."""
+    with open(os.path.join(os.path.dirname(__file__), *file_paths)) as verfile:
+        file_contents = verfile.read()
+    version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]", file_contents, re.M)
+    if version_match:
+        return version_match.group(1)
+    raise RuntimeError("Unable to find version string.")
 
 
 setup(
     name='IBroke',
-    version=__version__,
+    version=find_version('ibroke.py'),
     description='Interactive Brokers for Humans',
     long_description=long_description,
     url='https://gitlab.com/doctorj/ibroke',

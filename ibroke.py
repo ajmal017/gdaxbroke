@@ -20,22 +20,21 @@ Convenience wrapper for Interactive Brokers API.
 import random
 import sys
 import time
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from datetime import datetime
 import logging
 from copy import copy
-
 
 import math
 from itertools import takewhile
 from queue import Queue, Empty
 
-#from setup import __version__
-from ib.opt import ibConnection, message
+from ib.opt import ibConnection
 from ib.ext.Contract import Contract
 from ib.ext.Order import Order as IBOrder
 from ib.ext.TickType import TickType
 
+__version__ = "0.0.3"
 
 
 #: API warning codes that are not actually problems and should not be logged
@@ -45,7 +44,7 @@ DISCONNECT_ERRORS = (504, 502, 1100, 1300, 2110)
 #: When an order fails, the orderStatus message doesn't tell you why.  The description comes in a separate error message, so you gotta be able to tell if the "id" in an error message is an order id or a ticker id.
 ORDER_RELATED_ERRORS = (103, 104, 105, 106, 107, 109, 110, 111, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 129, 131, 132, 133, 134, 135, 136, 137, 140, 141, 144, 146, 147, 148, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 163, 164, 166, 167, 168, 201, 202, 203, 303, 311, 312, 313, 314, 315, 325, 327, 328, 329, 335, 336, 337, 338, 339, 340, 341, 342, 343, 347, 348, 349, 350, 351, 352, 353, 355, 356, 358, 359, 360, 361, 362, 363, 364, 367, 368, 369, 370, 371, 372, 373, 374, 375, 376, 377, 378, 379, 380, 382, 383, 387, 388, 389, 390, 391, 392, 393, 394, 395, 396, 397, 398, 399, 400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 419, 422, 423, 424, 425, 426, 427, 428, 429, 433, 434, 435, 436, 437, 512, 515, 516, 517, 10003, 10005, 10006, 10007, 10008, 10009, 10010, 10011, 10012, 10013, 10014, 10016, 10017, 10018, 10019, 10020, 10021, 10022, 10023, 10024, 10025, 10026, 10027,)
 #: Error codes related to data requests, i.e., the error id is a ticker id.
-TICKER_RELATED_ERRORS = (101, 102, 138, 301, 300, 309, 310, 316, 302, 317, 354, 365, 366, 385, 386, 510, 511, 519, 520, 524, 525, 529, 530,)
+TICKER_RELATED_ERRORS = (101, 102, 138, 301, 300, 309, 310, 316, 302, 317, 354, 365, 366, 385, 386, 420, 510, 511, 519, 520, 524, 525, 529, 530,)
 #: Errors requesting contract details
 CONTRACT_REQUEST_ERRORS = (200,)
 #: A commission value you'd never expect to see.  Sometimes we get bogus commission values.
@@ -61,6 +60,9 @@ LOG_LEVELS = {
     4: logging.DEBUG,
     5: logging.DEBUG,
 }
+InstrumentDefaults = namedtuple('InstrumentDefaults', 'symbol sec_type exchange currency expiry strike opt_type')
+#: Default values for instrument fields
+INSTRUMENT_DEFAULTS = InstrumentDefaults(None, 'STK', 'SMART', 'USD', None, 0.0, None)
 
 
 class Instrument:
@@ -73,7 +75,7 @@ class Instrument:
         :param Contract contract: IBPy Contract object (must have conID from contractDetails())
         """
         if not contract.m_conId:
-            raise ValueError('Contract must have conId (gotten from from contractDetails()).')
+            raise ValueError('Contract must have conId (obtained from contractDetails()).')
         self._broker = broker
         self._contract = contract
 
@@ -114,11 +116,22 @@ class Instrument:
         """:Return: a unique ID for this instrument."""
         return IBroke._instrument_id_from_contract(self._contract)
 
+    def tuple(self):
+        """:Return: The instrument as a 7-tuple."""
+        return tuple(getattr(self, prop) for prop in InstrumentDefaults._fields)
+
     def __str__(self):
-        return "Instrument<{}>".format(', '.join('{}={}'.format(prop, getattr(self, prop)) for prop in ('id', 'symbol', 'sec_type', 'exchange', 'currency', 'expiry', 'strike', 'opt_type',)))
+        return str(self.tuple())
 
     def __repr__(self):
         return str(self)
+
+    def __eq__(self, other):
+        """:Return: True iff `other` has the same IB Contract ID as this Instrument."""
+        return self.id == other.id
+
+    def __hash__(self):
+        return self.id
 
 
 class Order:
@@ -151,7 +164,9 @@ class Order:
         return str(self)
 
     def __str__(self):
-        return "Order<{}>".format(', '.join('{}={}'.format(prop, getattr(self, prop)) for prop in ('id', 'instrument', 'quantity', 'price', 'filled', 'avg_price', 'open', 'cancelled', 'profit', 'commission', 'open_time', 'fill_time')))
+        inst = tuple(val for default, val in zip(INSTRUMENT_DEFAULTS, self.instrument.tuple()) if val != default)
+        return "Order<{inst} {filled}/{quantity} @ {price} {open}{cancelled} #{id}>".format(
+            id=self.id, inst=inst, filled=self.filled, quantity=self.quantity, price=self.price, open='open' if self.open else 'closed', cancelled=' cancelled' if self.cancelled else '')
 
 
 class IBroke:
@@ -168,13 +183,13 @@ class IBroke:
           an exception is raised.
         """
         client_id = client_id if client_id is not None else random.randint(1, 2**31 - 1)       # TODO: It might be nice if this was a consistent hash of the caller's __file__ or __module__ or something.
-        self._conn = ibConnection(host, port, client_id)
         self.log = logging.getLogger(__name__)
         self.log.setLevel(LOG_LEVELS[verbose])
         self.verbose = verbose
         self.account = None
         self.__next_order_id = 0
         self._tick_handlers = defaultdict(list)     # Maps instrument ID (contract ID) to list of functions to be called with those ticks
+        self._tick_errors = dict()                  # Maps instrument ID (contract ID) to queue of any exceptions (errors) generated by requesting that ticker
         self._order_handlers = defaultdict(list)    # Maps instrument ID (contract ID) to list of functions to be called with order updates for that instrument
         self._alert_hanlders = defaultdict(list)    # Maps instrument ID (contract ID) to list of functions to be called with alerts for those tickers
         self._orders = dict()                       # Maps order_id to Order object
@@ -183,6 +198,7 @@ class IBroke:
         self._contract_details = []                 # Maps contractDetails() request id (int) to ContractDetails object.
         self.timeout_sec = timeout_sec
         self.connected = None                       # Tri-state: None -> never been connected, False: initially was connected but not now, True: connected
+        self._conn = ibConnection(host, port, client_id)
         self._conn.registerAll(self._handle_message)
         self._conn.connect()
         # The idea here is to catch errors synchronously, so if you can't connect, you know it at IBroke()
@@ -192,6 +208,7 @@ class IBroke:
                 raise RuntimeError('Error connecting to IB')
             else:
                 time.sleep(0.1)
+        self.log.info('IBroke %s connected to %s:%d, client ID %d', __version__, host, port, client_id)
         self._conn.reqPositions()
 
     def get_instrument(self, symbol, sec_type='STK', exchange='SMART', currency='USD', expiry=None, strike=0.0, opt_type=None):
@@ -239,20 +256,43 @@ class IBroke:
         # TODO: Maybe rename on_tick on_data, add param for type of data ('trade' (last trade price + vol), 'quote' (bid/ask), or float sec for bars)
         instrument = self.get_instrument(instrument)
         if on_tick:
+            if not self._tick_handlers.get(instrument.id):      # New ticker (get() does not insert into defaultdict)
+                def unblock_register(*args):
+                    """Temporary initial on_tick handler to unblock register() if a tick arrives"""
+                    self._tick_errors[instrument.id].put_nowait(None)
+
+                self._tick_errors[instrument.id] = Queue()      # _error() stuffs an exception in if it gets an error message; unblock_register stuffs None if it gets a tick
+                self._tick_handlers[instrument.id].append(unblock_register)
+                self._conn.reqMktData(instrument.id, instrument._contract, self.RTVOLUME, snapshot=False)
+                # Wait for errors
+                # TODO: Something about waiting on errors.  There's no message on successful mkt data subscription,
+                # so it's hard to know when it worked.  There won't always be a tick on success.
+                # The delay compounds when subscribing to many tickers.  One shared
+                # Queue to wait on?  Poll all queues (python doesn't have a wait-on-multiple-queues select() type thing)?
+                try:
+                    err = self._tick_errors[instrument.id].get(timeout=self.timeout_sec)
+                    if err is not None:
+                        raise err
+                except Empty:       # No errors (or ticks) within timeout
+                    pass
+                assert len(self._tick_handlers[instrument.id]) == 1, 'Found more than initial tick handler on register {}: {}'.format(instrument.id, self._tick_handlers[instrument.id])
+                self._tick_handlers[instrument.id].pop()        # Remove initial handler
             self._tick_handlers[instrument.id].append(on_tick)
-            #self._conn.reqRealTimeBars(instrument.id, instrument._contract, 5, "TRADES", not aftermarket)
-            self._conn.reqMktData(instrument.id, instrument._contract, self.RTVOLUME, False)
+            self.log.debug('REGISTER %d %s', instrument.id, instrument)
         if on_order:
             self._order_handlers[instrument.id].append(on_order)
         if on_alert:
             raise NotImplementedError
 
-    def order(self, instrument, quantity, limit=0, target=0, stop=0):
-        """Place and order and return an order ID, or -1 if no order was made."""
+    def order(self, instrument, quantity, limit=0.0, stop=0.0, target=0.0):
+        """Place an order and return an Order object, or None if no order was made.
+
+        The returned object does not change (will not update).
+        """
         if target:
             raise NotImplementedError
         if quantity == 0:
-            return -1
+            return None
 
         typemap = {
             (False, False): 'MKT',
@@ -261,7 +301,6 @@ class IBroke:
             (True, True):   'STP LMT',
         }
 
-        # TODO: I don't think IB likes 0 quantity orders
         # TODO: Check stop limit values are consistent
         order = IBOrder()
         order.m_action = 'BUY' if quantity >= 0 else 'SELL'
@@ -276,18 +315,30 @@ class IBroke:
         order.m_clientId = self._conn.clientId
 
         order_id = self._next_order_id()
-        self.log.debug('Place order %d: %s %s', order_id, obj2dict(instrument._contract), obj2dict(order))
+        self.log.debug('ORDER %d: %s %s', order_id, obj2dict(instrument._contract), obj2dict(order))
         self._orders[order_id] = Order(order_id, instrument, price=limit or None, quantity=quantity, filled=0, open=True, cancelled=False)
+        self.log.info('ORDER %s', self._orders[order_id])
         self._conn.placeOrder(order_id, instrument._contract, order)        # This needs come after updating self._orders
-        return self._orders[order_id]
+        return copy(self._orders[order_id])
 
-    def order_target(self, instrument, quantity, limit=0, target=0, stop=0):
-        """Place orders as necessary to bring position in `instrument` to `quantity`."""
-        return self.order(instrument, quantity - self.get_position(instrument), limit=limit, target=target, stop=stop)
+    def order_target(self, instrument, quantity, limit=0.0, stop=0.0):
+        """Place orders as necessary to bring position in `instrument` to `quantity`.
+
+        Bracket orders (with `target`) don't really make sense here.
+        """
+        return self.order(instrument, quantity - self.get_position(instrument), limit=limit, stop=stop)
 
     def cancel(self, order):
-        """Cancel an order."""
-        raise NotImplementedError
+        """Cancel an `order`."""
+        self.log.info('CANCEL %s', order)
+        self._conn.cancelOrder(order.id)
+
+    def cancel_all(self, instrument=None):
+        """Cancel all open orders.  If given, only cancel orders for `instrument`."""
+        # TODO: We might want to request all open orders, since our order status tracking might not be perfect.
+        for order in self._orders.values():
+            if order.open and (instrument is None or order.instrument == instrument):
+                self.cancel(order)
 
     def exit(self, instrument):
         """Set position to 0 for (aka flatten) `instrument` and cancel any outstanding orders."""
@@ -356,20 +407,25 @@ class IBroke:
         if not isinstance(code, int):
             self.log.error(str(msg))
         elif 2100 <= code < 2200:
-            self.log.warn(str(msg))
+            self.log.warn(msg.errorMsg + ' [{}]'.format(msg.errorCode))
         else:
-            if code in ORDER_RELATED_ERRORS:         # TODO: Some of these are actaually warnings (like 399, sometimes...?)...
+            if code in ORDER_RELATED_ERRORS:         # TODO: Some of these are actually warnings (like 399, sometimes...?)...
                 order = self._orders.get(msg.id)
                 if order:
                     order.cancelled = True
                     order.open = False
                     order.message = msg.errorMsg
-                    self.log.error('ORDER ERR %s', vars(order))
+                    self.log.error('ORDER ERR %d %s', code, order)
+                    # TODO: This "error" changes the price but does not cancel (not sure of code): "Order Message:\nSELL 2 ES DEC'16\nWarning: Your order was repriced so as not to cross a related resting order"
                     self._call_order_handlers(order)
 
             if code in TICKER_RELATED_ERRORS:
                 self.log.error(str(msg))
-                pass  # TODO: Connect error with ticker request
+                err_q = self._tick_errors.get(msg.id)       # register() puts a Queue here and waits for any errors (with timeout)
+                if err_q is None:
+                    self.log.warn('Got ticker error for unexpected request id {}: {} [{}]'.format(msg.id, msg.errorMsg, code))
+                else:
+                    err_q.put_nowait(ValueError('{} [{}]'.format(msg.errorMsg, code)))
 
             if code in CONTRACT_REQUEST_ERRORS:
                 self.log.error(str(msg))
@@ -436,7 +492,6 @@ class IBroke:
         else:
             self._contract_details[msg.reqId].put_nowait(None)
 
-
     def _orderStatus(self, msg):
         """Called with changes in order status.
 
@@ -452,7 +507,9 @@ class IBroke:
         # TODO: Worth making these immutable and replacing them?  Or *really* immutable and appending to a list of them?
         if order.open_time is None:
             order.open_time = time.time()
-        if msg.status in ('ApiCanceled', 'Canceled'):       # Inactive can mean error or not
+        if msg.status in ('ApiCanceled', 'Cancelled'):       # Inactive can mean error or not.  And yes, they appear to spell cancelled differently.
+            if not order.cancelled:     # Only log the first time (can be dupes)
+                self.log.info('CANCELLED %s', order)
             order.cancelled = True
             order.open = False
         elif msg.filled > abs(order.filled):      # Suppress duplicate / out-of-order fills  (order.filled is negative for sells)
@@ -460,11 +517,11 @@ class IBroke:
             order.avg_price = msg.avgFillPrice
             if order.filled == order.quantity:
                 order.open = False
-            self.log.info('Order %d (%d @ %s) filled %d @ %.2f', msg.orderId, order.quantity, str(order.price or 'MKT'), order.filled, order.avg_price)
             self._call_order_handlers(order)
 
     def _openOrder(self, msg):
         """Called when orders are submitted and completed."""
+        self.log.debug('STATE %d %s', msg.orderId, obj2dict(msg.orderState))
         order = self._orders.get(msg.orderId)
         if not order:
             self.log.error('Got openOrder for unknown orderId {}'.format(msg.orderId))
@@ -477,15 +534,12 @@ class IBroke:
         if msg.orderState.m_status == 'Cancelled':
             order.cancelled = True
             order.open = False
-        elif msg.orderState.m_status == 'Filled':
+        elif msg.orderState.m_status == 'Filled':       # Filled means completely filled
             order.open = False
-        # In theory we might be able to use orderState instead of commissionReport, but...
-        # It's kinda whack.  Sometime's it's giant numbers, and there are dupes so it's hard to use.
+            self.log.info('COMPLETE %s avg price %f', order, order.avg_price)
         if msg.orderState.m_warningText:
             self.log.warn('Order %d: %s', msg.orderId, msg.orderState.m_warningText)
             order.message = msg.orderState.m_warningText
-
-        self.log.debug('STATE %d %s', msg.orderId, obj2dict(msg.orderState))
 
     def _execDetails(self, msg):
         """Called on order executions."""
@@ -594,26 +648,35 @@ def iter_except(func, exception, first=None):
 #############################################################
 
 
-def on_tick(timestamp, price, size, volume, vwap):
-    timestamp = datetime.utcfromtimestamp(timestamp)
-    #print('{} price {:.2f} size {:.0f} vol {:.0f} vwap {:.2f}'.format(timestamp, price, size, volume, vwap))
-
-
-def on_order(order):
-    print('order {} @ {}, profit ${:.2f}'.format(order.quantity, order.avg_price, order.profit))
-
-
 def main():
     """Simple test."""
-    ib = IBroke(verbose=3)
-    #inst = ib.get_instrument("AAPL")
-    #inst = ib.get_instrument('EUR', 'CASH', 'IDEALPRO')
-    inst = ib.get_instrument("ES", "FUT", "GLOBEX", expiry="201612")
-    quantity = 1
-    ib.register(inst, on_tick, on_order)
-    for _ in range(10):
-        time.sleep(random.random() * 30)
-        ib.order(inst, quantity if random.random() > 0.5 else -quantity)
+    last_price = 0.0
+
+    def on_tick(timestamp, price, size, volume, vwap):
+        nonlocal last_price
+        last_price = price
+        timestamp = datetime.utcfromtimestamp(timestamp)
+        print('{} price {:.2f} size {:.0f} vol {:.0f} vwap {:.2f}'.format(timestamp, price, size, volume, vwap))
+
+    def on_order(order):
+        print('order {} @ {}, profit ${:.2f}'.format(order.quantity, order.avg_price, order.profit))
+
+    ib = IBroke(verbose=5)
+    #inst = ib.get_instrument("AAPL"); quantity = 200
+    #inst = ib.get_instrument('EUR', 'CASH', 'IDEALPRO'); quantity = 20000
+    inst = ib.get_instrument("ES", "FUT", "GLOBEX", expiry="201612"); quantity = 1
+    try:
+        ib.register(inst, on_tick, on_order, aftermarket=True)
+        for _ in range(20):
+            time.sleep(random.random() * 30)
+            if last_price:
+                ib.cancel_all()
+                time.sleep(0.5)
+                ib.order_target(inst, quantity if random.random() > 0.5 else -quantity, limit=last_price)
+    except KeyboardInterrupt:
+        print('\nClosing...\n', file=sys.stderr)
+        ib.cancel_all()
+        ib.exit(inst)
 
     time.sleep(3)
     ib.exit(inst)

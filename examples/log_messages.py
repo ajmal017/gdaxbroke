@@ -84,12 +84,12 @@ def main():
     sleep(1)
     print('Account {}, Paper Trading = {}'.format(account, paper_account))
     if not paper_account:
-        log.error('Refusing to run with non-demo account')
+        log.error('Refusing to run with non-paper account; set IB_PAPER_ACCOUNT to paper account number')
         sys.exit(1)
 
-    #contract = make_contract('es', 'fut', 'globex', 'usd', '20161216')
+    contract = make_contract('es', 'fut', 'globex', 'usd', '20161216')
     #contract = make_contract('AAPL')
-    contract = make_contract('EUR', 'CASH', 'IDEALPRO')
+    #contract = make_contract('EUR', 'CASH', 'IDEALPRO')
     conn.reqMktData(0, contract, RTVOLUME, False)
     #conn.reqRealTimeBars(1, contract, 5, "BID", False)
 

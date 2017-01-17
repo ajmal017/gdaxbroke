@@ -59,20 +59,24 @@ def make_order(quantity, limit=0.0, stop=0.0):
 
 def main():
     """Connect, request, display."""
+    host, port, client_id = 'localhost', 7497, 1    # random.randint(1, 2 ** 31 - 1)
     paper_account = False        # Ensure we're not using a real-money account
     account = None
+    order_id = None
 
     def handle(msg):
-        nonlocal paper_account, account
+        nonlocal paper_account, account, order_id
         log.debug(msg)
-        if getattr(msg, 'typeName', None) == 'accountSummary' and msg.tag == 'AccountType' and msg.value == 'UNIVERSAL':
+        name = getattr(msg, 'typeName', None)
+        if name == 'accountSummary' and msg.tag == 'AccountType' and msg.value == 'UNIVERSAL':
             paper_account = True
-        if getattr(msg, 'typeName', None) == 'managedAccounts':
+        elif name == 'managedAccounts':
             account = msg.accountsList
             if account and account == os.environ.get('IB_PAPER_ACCOUNT'):
                 paper_account = True
+        elif name == 'nextValidId':
+            order_id = msg.orderId
 
-    host, port, client_id = 'localhost', 7497, random.randint(1, 2 ** 31 - 1)
 
     conn = ibConnection(host, port, client_id)
     conn.registerAll(handle)
@@ -87,14 +91,17 @@ def main():
         log.error('Refusing to run with non-paper account; set IB_PAPER_ACCOUNT to paper account number')
         sys.exit(1)
 
-    contract = make_contract('es', 'fut', 'globex', 'usd', '20161216')
+    contract = make_contract('es', 'fut', 'globex', 'usd', '20170317')
     #contract = make_contract('AAPL')
     #contract = make_contract('EUR', 'CASH', 'IDEALPRO')
     conn.reqMktData(0, contract, RTVOLUME, False)
     #conn.reqRealTimeBars(1, contract, 5, "BID", False)
 
+    conn.placeOrder(order_id, contract, make_order(1))
+    conn.placeOrder(order_id + 1, contract, make_order(-1, limit=2270.0))
+
     #conn.reqGlobalCancel()
-    sleep(30)
+    sleep(10)
 
 
 if __name__ == '__main__':

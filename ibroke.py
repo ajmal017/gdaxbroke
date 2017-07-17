@@ -23,21 +23,27 @@ import sys
 import threading
 import time
 from collections import defaultdict, namedtuple
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from copy import copy
 import math
-from itertools import takewhile
+from itertools import takewhile, tee, starmap
 from queue import Queue, Empty
+from typing import Optional, Tuple, Iterable, Union, Any, Callable
+import unittest
 
 from ib.opt import ibConnection
 from ib.ext.Contract import Contract
 from ib.ext.Order import Order as IBOrder
 from ib.ext.TickType import TickType
+from pytz import timezone, utc
 
-__version__ = "0.3.0"
-__all__ = ('IBroke', 'Instrument', 'Order', 'Bar')
 
+__version__ = "0.3.1"
+__all__ = ('IBroke', 'Instrument', 'Order', 'Bar', 'now')
+
+#: Contract tuple type.  TODO: Want to be able to elide trailing values, I think.
+ContractTuple = Tuple[str, str, str, str, str, float, str]
 #: API warning codes that are not actually problems and should not be logged
 BENIGN_ERRORS = (202, 2104, 2106, 2137)     # 202 is issued when you cancel an order.
 #: API error codes indicating IB/TWS disconnection
@@ -73,22 +79,72 @@ class Instrument:
 
     Returned by :meth:`IBroke.get_instrument`, cannot be created directly by user code.
     """
-    def __init__(self, broker, contract):
-        """Create a Contract object defining what will be purchased, at which exchange and in which currency.
+    def __init__(self, broker, contract_details):
+        """Create an Instrument object defining what will be traded, at which exchange and in which currency.
 
         :param IBroke broker: :class:`IBroke` instance
-        :param Contract contract: IBPy :class:`Contract` object (must have valid `conID` from `contractDetails()`)
+        :param ContractDetails contract_details: IBPy :class:`ContractDetails` object (must have valid `conID` from `contractDetails()`)
         """
-        if not contract.m_conId:
-            raise ValueError('Contract must have conId (obtained from contractDetails()).')
+        # TODO: The design of this class makes me uneasy.  Ideally it should be immutable, but the underlying ContractDetails can
+        # change, e.g., market hours day-to-day.  And clients keep references around.
+        if not contract_details or not contract_details.m_summary:
+            raise ValueError('ContractDetails contained no Contract summary')
         self._broker = broker
-        self._contract = contract
+        self._details = contract_details
+        self._contract = self._details.m_summary
+        if not self._contract.m_conId:
+            raise ValueError('Contract must have conId (obtained from contractDetails()).')
         try:
             #: The leverage multiplier, i.e., what you multiply the quote by to get the actual underlying value."""
             self.leverage = float(self._contract.m_multiplier)      # Not a property method because we only want to parse / warn once.
         except (ValueError, TypeError):
-            self._broker.log.warning("Error parsing contract ID {} multiplier '{}'; using leverage 1.0".format(self.id, self._contract.m_multiplier))
+            self._broker.log.debug("Error parsing contract ID {} multiplier '{}'; using leverage 1.0".format(self.id, self._contract.m_multiplier))
             self.leverage = 1.0
+        tz = get_timezone(self._details.m_timeZoneId)
+        #print('TRADING HOURS', self, '\n', self._details.m_tradingHours, '\nTIMEZONE', tz)
+        self._trading_hours = self._normalize_trading_hours(self._parse_trading_hours(self._details.m_tradingHours), tz)
+        self._liquid_hours = self._normalize_trading_hours(self._parse_trading_hours(self._details.m_liquidHours), tz)
+        self._created_time = now().astimezone(tz)       # Used to know when our trading/liquid hours are stale
+
+    @staticmethod
+    def _parse_trading_hours(hours: str) -> Iterable[Tuple[datetime, datetime]]:
+        """:Return: A tuple of pairs of naive (tz-unaware) :class:`datetime` objects giving the time ranges
+        parsed from an IB trading hours string.
+
+        Example:
+            '20170621:1700-1515,1530-1600;20170622:1700-1515,1530-1600'
+            '20170623:1715-1700;20170626:1715-1700'
+        """
+        for daystr in hours.split(';'):     # Regex can't handle varying number of repeated capture groups
+            date, times = daystr.split(':')
+            date = datetime.strptime(date, '%Y%m%d').date()
+            if times != 'CLOSED':
+                for hours in times.split(','):
+                    start, end = hours.split('-')
+                    start = datetime.strptime(start, '%H%M').time()
+                    end = datetime.strptime(end, '%H%M').time()
+                    yield datetime.combine(date, start), datetime.combine(date, end)
+
+    @staticmethod
+    def _normalize_trading_hours(datetimes: Iterable[Tuple[datetime, datetime]], tz: timezone) -> Tuple[Tuple[datetime, datetime], ...]:
+        """:Return: a sorted tuple of :class`datetime` ranges (pairs) where "wraparound" time ranges have been replaced with
+        properly ordered, collapsed ranges, and the given `timezone` has been set.
+
+        Note this may change the number of time ranges.
+        """
+        if tz is None:
+            raise ValueError('You better know what timezone your dates are in.')
+
+        def normalize(start, end):
+            assert start.date() == end.date()
+            if start > end:     # When start > end, start is actually the day before
+                start -= timedelta(days=1)
+                assert start < end
+            return tz.localize(start), tz.localize(end)     # Give them a timezone.  It is important to use pytz' localize() instead of creating a datetime with a tzinfo.
+
+        normed = tuple(starmap(normalize, datetimes))
+        assert all(e1 <= s2 for (_, e1), (s2, _) in pairwise(normed))       # End of last range is before (or eq) start of next range
+        return normed
 
     @property
     def symbol(self):
@@ -117,10 +173,6 @@ class Instrument:
     @property
     def opt_type(self):
         return self._contract.m_right
-
-    def details(self):
-        """:Return: contract details."""
-        raise NotImplementedError
 
     @property
     def id(self):
@@ -189,6 +241,61 @@ class Order:
             id=self.id, inst=inst, filled=self.filled, quantity=self.quantity, price=self.price, open='open' if self.open else 'closed', cancelled=' cancelled' if self.cancelled else '')
 
 
+Bar = namedtuple('Bar', ('time', 'bid', 'bidsize', 'ask', 'asksize', 'last', 'lastsize', 'lasttime', 'open', 'high', 'low', 'close', 'vwap', 'volume', 'open_interest'))
+Bar.__doc__ = """
+Bar is the usual open / high / low / close trade prices you are probably familiar with from stock quotes,
+plus the most recent bid, ask and trade prices, and the volume-weighted average trade price over the period.
+Bar values, in order, are:
+
+time
+    The Unix timestamp of the end of the bar, in seconds since the epoch UTC as a float
+
+bid
+    The most recent price at which you can sell the instrument
+
+bidsize
+    The number of shares/contracts wanted at the bid price
+
+ask
+    The most recent price at which you can buy the instrument
+
+asksize
+    The number of shares/contracts available at the ask price
+
+last
+    The most recent price at which the instrument was traded
+
+lastsize
+    The number of shares/contracts exchanged in the most recent trade
+
+lasttime
+    The Unix timestamp of the last trade, in seconds since the epoch UTC as a float
+
+open
+    The last trade price prior to the start of this bar; usually always equal to the previous bar close
+
+high
+    The highest trade price during this bar (or the price of the most recent trade if none occurred during this bar)
+
+low
+    The lowest trade price during this bar (or the price of the most recent trade if none occurred during this bar)
+
+close
+    The last trade price during this bar (or the price of the most recent trade if none occurred during this bar)
+
+vwap
+    The `volume-weighted average price <https://en.wikipedia.org/wiki/Volume-weighted_average_price>`__
+    of all trades **since the last bar**, or 0.0 if there were none.
+
+volume
+    The cumulative total number of shares/contracts traded today.  For US stocks, in lots, or shares divided by 100.
+
+open_interest
+    The number of oustanding contracts or options.  This is only available for a very small number of
+    instruments; for most instruments it is always ``NaN``.
+"""
+
+
 class IBroke:
     """Interactive Brokers connection.
 
@@ -244,16 +351,20 @@ class IBroke:
         self.log_positions()
         self.log_open_orders()
 
-    def get_instrument(self, symbol, sec_type='STK', exchange='SMART', currency='USD', expiry=None, strike=0.0, opt_type=None):
+    def get_instrument(self, symbol: Union[str, ContractTuple, int, Instrument], sec_type: str = 'STK', exchange: str = 'SMART', currency: str = 'USD', expiry: Optional[str] = None, strike: float = 0.0, opt_type: Optional[str] = None) -> Instrument:
         """Return an :class:`Instrument` object defining what will be purchased, at which exchange and in which currency.
 
-        :param str,tuple,int,Instrument symbol: The ticker symbol, IB contract tuple, IB contract ID, or Instrument object.
-        :param str sec_type: The security type for the contract ('STK', 'FUT', 'CASH' (forex), 'OPT')
-        :param str currency: The currency in which to purchase the contract
-        :param str expiry: Future or option expiry date, YYYYMMDD.
-        :param str exchange: The exchange to trade the contract on.  Usually: stock: SMART, futures: GLOBEX, forex: IDEALPRO
-        :param float strike: The strike price for options
-        :param str opt_type: 'PUT' or 'CALL' for options
+            (symbol, sec_type, exchange, currency, expiry, strike, opt_type)
+
+        :param symbol: The ticker symbol, IB contract tuple, IB contract ID, or :class:`Instrument`.
+          Passing an :class:`Instrument` will always return the same object.
+          Passing an (integer) contract ID will return an exisiting :class:`Instrument` if possible, otherwise create a new one.
+        :param sec_type: The security type for the contract ('STK', 'FUT', 'CASH' (forex), 'OPT')
+        :param currency: The currency in which to purchase the contract
+        :param expiry: Future or option expiry date, YYYYMMDD.
+        :param exchange: The exchange to trade the contract on.  Usually: stock: SMART, futures: GLOBEX, forex: IDEALPRO
+        :param strike: The strike price for options
+        :param opt_type: 'PUT' or 'CALL' for options
         """
         if isinstance(symbol, Instrument):
             return symbol
@@ -262,6 +373,9 @@ class IBroke:
         elif isinstance(symbol, int):
             contract = Contract()
             contract.m_conId = symbol
+            inst = self._instruments.get(self._instrument_id_from_contract(contract))
+            if inst is not None:
+                return inst
         elif isinstance(symbol, str):
             contract = make_contract(symbol, sec_type, exchange, currency, expiry, strike, opt_type)
         else:
@@ -270,11 +384,14 @@ class IBroke:
         # This functionality is split into request and response halves so elsewhere we can make the request in one callback and process the response in another.
         req_id = self._request_contract_details(contract)
         inst = self._handle_contract_details(req_id)
+        earliest, latest = inst._trading_hours[0][0], inst._trading_hours[-1][1]
+        self.log.debug('%s HOURS : %s -- %s  (%.0f h)', inst, earliest, latest, (latest - earliest).total_seconds() / 3600)
         return inst
 
     def _request_contract_details(self, contract):
         """Call reqContractDetails and stuff the results in ``self._contract_details[req_id]``, where `req_id` is the return value."""
         req_id = len(self._contract_details)  # TODO: race condition between getting length and extending
+        self.log.debug('REQ CON DET %d ID %d', req_id, contract.m_conId)
         self._contract_details.append(Queue())  # Filled by _contractDetails(), capped off with None by _contractDetailsEnd()
         self._conn.reqContractDetails(req_id, contract)
         return req_id
@@ -295,20 +412,20 @@ class IBroke:
             raise details[0]
         best = choose_best_contract(details)
         self.log.debug('BEST %s', obj2dict(best.m_summary))
-        inst = Instrument(self, best.m_summary)
+        inst = Instrument(self, best)
         self._instruments[inst.id] = inst
         self._positions.setdefault(inst.id, (0, None))  # ib.reqPositions() (called in reconcile()) only gives 0 positions for instruments traded recently, so we set our own
         return inst
 
-    def register(self, instrument, on_bar=None, on_order=None, on_alert=None, bar_type='time', bar_size=1.0):
+    def register(self, instrument: Union[str, ContractTuple, int, Instrument], on_bar: Callable[[Instrument, Bar], None] = None, on_order: Callable[[Order], None] = None, on_alert: Callable[[Instrument, str], None] = None, bar_type: str = 'time', bar_size: float = 1.0) -> None:
         """Register bar, order, and alert handlers for an `instrument`.
 
-        :param str,tuple,Instrument instrument: The instrument to register callbacks for.  Can be symbol, contract tuple, or :class:`Instrument`.
-        :param func on_bar: Call ``func(instrument, bar)`` with a :class:`bar` every `bar_size` seconds.
-        :param func on_order: Call ``func(order)`` with an :class:`Order` object on order status changes for `instrument`.
-        :param func on_alert: Call ``func(instrument, alert_type)`` for notification of session start/end, disconnects/reconnects, trading halts, corporate actions, etc related to `instrument`.
-        :param str bar_type: The type of bar to generate: `'time'` to get periodic bars, or `'tick'` to get updates with every quote change.
-        :param float bar_size: The period of a bar in seconds.  Ignored for ``bar_type == 'tick'``.
+        :param instrument: The instrument to register callbacks for.  Can be symbol, contract tuple, or :class:`Instrument`.
+        :param on_bar: Call ``func(instrument, bar)`` with a :class:`Bar` every `bar_size` seconds.
+        :param on_order: Call ``func(order)`` with an :class:`Order` object on order status changes for `instrument`.
+        :param on_alert: Call ``func(instrument, alert_type)`` for notification of session start/end, disconnects/reconnects, trading halts, corporate actions, etc related to `instrument`.
+        :param bar_type: The type of bar to generate: `'time'` to get periodic bars, or `'tick'` to get updates with every quote change.
+        :param bar_size: The period of a bar in seconds.  Ignored for ``bar_type == 'tick'``.
         """
         assert bar_type in ('time', 'tick')
         assert bar_size > 0
@@ -359,7 +476,7 @@ class IBroke:
         if on_alert:
             self._alert_hanlders[instrument.id].append(on_alert)
 
-    def order(self, instrument, quantity, limit=0.0, stop=0.0, target=0.0):
+    def order(self, instrument: Instrument, quantity: int, limit: float = 0.0, stop: float = 0.0, target: float = 0.0) -> Optional[Order]:
         """Place an order and return an Order object, or None if no order was made.
 
         The returned object does not change (will not update).
@@ -485,16 +602,15 @@ class IBroke:
         if not self._reconcile_contract_requests.empty():
             strays = tuple(iter_except(self._reconcile_contract_requests.get_nowait, Empty))
             self.log.warning("reconcile() queue not empty: %s Attempt to call reconcile more than once concurrently?", strays)
-        self._conn.reqPositions()               # each resulting position() stuffs any reqContractDetails request IDs it generates into the queue; positionEnd() stuffs a None
+        self._conn.reqPositions()               # generates _position() messages, which requests contract details and stuffs the request IDs into the _reconcile_contract_requests queue; positionEnd() stuffs a None
+        # _position() itself will call _request_contract_details, and we wait on the results here.
         # Wait on all contractDetails request IDs to fill the queue, plus None from positionEnd; put into a tuple
         req_ids = tuple(iter_except(lambda: self._reconcile_contract_requests.get(timeout=self.timeout_sec), Empty))
         if not req_ids or req_ids[-1] is not None:
             self.log.warning("reconcile() timed out waiting for positions; positions may be stale")
 
         for req_id in req_ids:
-            if req_id is None:
-                pass
-            else:
+            if req_id is not None:
                 try:
                     self._handle_contract_details(req_id)
                 except Exception as err:
@@ -519,6 +635,76 @@ class IBroke:
         """Log open orders at INFO."""
         for order in self.get_open_orders():
             self.log.info('OPEN ORDER %s', order)
+
+    def market_open(self, instrument: Instrument, time: Optional[datetime] = None, afterhours: bool = True) -> bool:
+        """:Return: True if `instrument` trades at the given `time`, which defaults to now.
+
+        This only works for (roughly) the current and following day, and may not work for times in the past.
+
+        :param time: Must be a timezone-aware datetime to compare to market hours.  Defaults to now.
+        :param afterhours: If ``afterhours = False``, ``market_open()`` will only return True for times
+          inside normal market hours.  If ``afterhours = True``, it will return true for times inside
+          afterhours trading as well.  (Technically ``afterhours = False`` means only return true during
+          "liquid" market hours, according to IB.)
+        :raises ValueError: If `time` is outside the known schedule for this instrument.  Usually that's only
+          today and tomorrow.
+        """
+        # This is an IBroke method instead of Instrument to avoid mutuable Instrument state.
+        # The info underlying an Instrument can change (e.g. market hours), but we want the canonical Instrument with the latest info.
+        # So we always look it up from IBroke, refreshing if necessary.
+        now_ = now()
+        if time is None:
+            time = now_
+        if not time.tzinfo:
+            raise ValueError('Time must have a timezone.')
+
+        instrument = self._ensure_fresh_instrument_data(instrument)
+        open_hours = instrument._trading_hours if afterhours else instrument._liquid_hours
+        assert open_hours, 'Empty trading hours'
+        earliest, latest = open_hours[0][0], open_hours[-1][1]
+        if time < earliest and time < now_ - timedelta(seconds=self.timeout_sec):
+            raise ValueError('Time {} earlier than available schedule {}'.format(time, earliest))
+        if time > latest:
+            self.log.warning('market_open() request {} beyond time horizon {}, assuming closed.'.format(time, latest))
+        return any(start <= time <= end for start, end in open_hours)
+
+    def market_hours(self, instrument: Instrument, afterhours: bool = True) -> Tuple[Optional[datetime], Optional[datetime]]:
+        """:Return: the next market opening and closing time of the given `instrument`.
+
+        Note either may be sooner than the other, and either or both may be None.
+
+        :param afterhours: If True, return next times for after hours trading.
+          If False, return next times for regular trading hours.
+        """
+        now_ = now()
+        instrument = self._ensure_fresh_instrument_data(instrument)      # Update market hours if necessary
+        open_hours = instrument._trading_hours if afterhours else instrument._liquid_hours
+        latest = open_hours[-1][1] if open_hours else None
+        if not latest or now_ > latest:
+            self.log.warning('market_hours() request {} beyond time horizon {}, no hours available.'.format(now_, latest))
+        open_, close = None, None
+        for start, end in open_hours:
+            if open_ is None and now_ <= start:
+                open_ = start
+            if close is None and now_ <= end:
+                close = end
+        return open_, close
+
+    def _ensure_fresh_instrument_data(self, instrument: Instrument) -> Instrument:
+        """Check if market hours data for `instrument` is stale and re-request, returning a new Instrument."""
+        instrument = self.get_instrument(instrument.id)  # Lookup canonical Instrument by id; passing an Instrument returns the same object.
+        # If market hours data is out of date, refresh.
+        # Since we only get data for today and tomorrow, and not data for closed days, refresh if today != instrument timestamp day
+        # (Hard to do just based on our market hours data structure, without timestamp, since entire closed days aren't represented.)
+        today = now().astimezone(instrument._created_time.tzinfo).date()
+        if instrument._created_time.date() != today:
+            earliest, latest = instrument._trading_hours[0][0], instrument._trading_hours[-1][1]
+            self.log.debug('REFRESH {} before: {} -- {}  ({:.0f} h)'.format(instrument, earliest, latest, (latest - earliest).total_seconds() / 3600))
+            req_id = self._request_contract_details(instrument._contract)
+            instrument = self._handle_contract_details(req_id)  # TODO: Waiting might lead to deadlock if we're called in another request?
+            earliest, latest = instrument._trading_hours[0][0], instrument._trading_hours[-1][1]
+            self.log.debug('REFRESH {} after : {} -- {}  ({:.0f} h)'.format(instrument, earliest, latest, (latest - earliest).total_seconds() / 3600))
+        return instrument
 
     def disconnect(self):
         """Disconnect from IB, rendering this object mostly useless."""
@@ -754,9 +940,9 @@ class IBroke:
 
     def _contractDetails(self, msg):
         """Callback for reqContractDetails.  Called multiple times with all possible matches for one request,
-        followed by a contractDetailsEnd.  We put the responses in a Queue (self._contract_details[req_id]),
+        followed by a contractDetailsEnd.  We put the responses in to a dict of Queues indexed by request id (self._contract_details[req_id]),
         followed by None to indicate the end."""
-        self.log.debug('DETAILS %d %s', msg.reqId, obj2dict(msg.contractDetails))
+        self.log.debug('DETAILS %d ID %d %s', msg.reqId, msg.contractDetails.m_summary.m_conId, obj2dict(msg.contractDetails))
         if msg.reqId >= len(self._contract_details):
             self.log.error('Could not find contract details slot %d for %s', msg.reqId, obj2dict(msg.contractDetails))
         else:
@@ -865,13 +1051,18 @@ class IBroke:
             # Call order handlers in commissionReport() instead of here so we can include commission info.
 
     def _position(self, msg):
-        """Called when positions change; gives new position."""
+        """Called when positions change; gives new position.
+
+        If the instrument is unknown (not in self.instruments[]), we assume it's from a reconcile() call,
+        make a contract details request, and stuff the request ID in _reconcile_contract_requests.
+        """
         inst_id = self._instrument_id_from_contract(msg.contract)
         self.log.debug('POS %d %s %s', msg.pos, inst_id, obj2dict(msg.contract))
         # So: it's possible we don't have this Instrument in self._instruments, since the account may have had open positions before we started.
         # However, we can't wait for the look up (contractDetails) here because it causes a deadlock in IBPy (this method is an IBPy callback, so no other callbacks will fire until it returns).
-        # So, we put the reqContractDetails request ID in a Queue, then wait (for all the contractDetailsEnds) in _positionEnd and create the Instruments there.
+        # So, we put the reqContractDetails request ID in a Queue, then wait (for all the contractDetailsEnds) in reconcile() and create the Instruments there.
         if inst_id not in self._instruments:
+            self.log.debug('POS INST ID %d not found: %s', inst_id, self._instruments.keys())
             self._reconcile_contract_requests.put_nowait(self._request_contract_details(msg.contract))
         try:
             multiplier = float(msg.contract.m_multiplier)
@@ -914,61 +1105,6 @@ class IBroke:
         """Called when there is no other message handler for `msg`."""
         if self.verbose < 5:        # Don't log again if already logged in main handler
             self.log.debug('MSG %s', msg)
-
-
-Bar = namedtuple('Bar', ('time', 'bid', 'bidsize', 'ask', 'asksize', 'last', 'lastsize', 'lasttime', 'open', 'high', 'low', 'close', 'vwap', 'volume', 'open_interest'))
-"""
-Bars are the usual open / high / low / close trade prices you are probably familiar with from stock quotes,
-plus the most recent bid, ask and trade prices, and the volume-weighted average trade price over the period.
-The values of a bar, in order, are:
-
-time
-    The Unix timestamp of the end of the bar, in seconds since the epoch UTC as a float
-
-bid
-    The most recent price at which you can sell the instrument
-
-bidsize
-    The number of shares/contracts wanted at the bid price
-
-ask
-    The most recent price at which you can buy the instrument
-
-asksize
-    The number of shares/contracts available at the ask price
-
-last
-    The most recent price at which the instrument was traded
-
-lastsize
-    The number of shares/contracts exchanged in the most recent trade
-
-lasttime
-    The Unix timestamp of the last trade, in seconds since the epoch UTC as a float
-
-open
-    The last trade price prior to the start of this bar; usually always equal to the previous bar close
-
-high
-    The highest trade price during this bar (or the price of the most recent trade if none occurred during this bar)
-
-low
-    The lowest trade price during this bar (or the price of the most recent trade if none occurred during this bar)
-
-close
-    The last trade price during this bar (or the price of the most recent trade if none occurred during this bar)
-
-vwap
-    The `volume-weighted average price <https://en.wikipedia.org/wiki/Volume-weighted_average_price>`__
-    of all trades **since the last bar**, or 0.0 if there were none.
-
-volume
-    The cumulative total number of shares/contracts traded today.  For US stocks, in lots, or shares divided by 100.
-
-open_interest
-    The number of oustanding contracts or options.  This is only available for a very small number of
-    instruments; for most instruments it is always ``NaN``.
-"""
 
 
 class Ticumulator:
@@ -1102,6 +1238,11 @@ class RecurringTask(threading.Thread):
         self._running = False
 
 
+def now() -> datetime:
+    """:Return: the current time in UTC, with timezone."""
+    return datetime.utcnow().replace(tzinfo=utc)
+
+
 def make_contract(symbol, sec_type='STK', exchange='SMART', currency='USD', expiry=None, strike=0.0, opt_type=None):
     """:Return: an (unvalidated, no conID) IB Contract object with the given parameters."""
     contract = Contract()
@@ -1143,6 +1284,40 @@ def obj2dict(obj):
     return {field: val for field, val in vars(obj).items() if val != getattr(default, field, None)}
 
 
+def get_timezone(abbrev: str) -> timezone:
+    """:Return: a pytz :class:`timezone` object for a given IB abbreviation."""
+    #: Maps timezone abbreviations returned in ContractDetails objects (from Java?) to "standard" tz names
+    #: From http://grepcode.com/file/repository.grepcode.com/java/root/jdk/openjdk/8u40-b25/sun/util/calendar/ZoneInfoFile.java/#219
+    TIMEZONE_ABBREVS = {
+        "ACT": "Australia/Darwin",
+        "AET": "Australia/Sydney",
+        "AGT": "America/Argentina/Buenos_Aires",
+        "ART": "Africa/Cairo",
+        "AST": "America/Anchorage",
+        "BET": "America/Sao_Paulo",
+        "BST": "Asia/Dhaka",
+        "CAT": "Africa/Harare",
+        "CNT": "America/St_Johns",
+        "CST": "America/Chicago",
+        "CTT": "Asia/Shanghai",
+        "EAT": "Africa/Addis_Ababa",
+        "ECT": "Europe/Paris",
+        "IET": "America/Indiana/Indianapolis",
+        "IST": "Asia/Kolkata",
+        "JST": "Asia/Tokyo",
+        "MIT": "Pacific/Apia",
+        "NET": "Asia/Yerevan",
+        "NST": "Pacific/Auckland",
+        "PLT": "Asia/Karachi",
+        "PNT": "America/Phoenix",
+        "PRT": "America/Puerto_Rico",
+        "PST": "America/Los_Angeles",
+        "SST": "Pacific/Guadalcanal",
+        "VST": "Asia/Ho_Chi_Minh",
+    }
+    return timezone(TIMEZONE_ABBREVS.get(abbrev, abbrev))
+
+
 def iter_except(func, exception, first=None):
     """ Call a function repeatedly until an exception is raised.
 
@@ -1168,6 +1343,14 @@ def create_logger(name, level=logging.WARNING):
     logger.addHandler(handler)
     logger.propagate = False
     return logger
+
+
+def pairwise(iterable):
+    """s -> (s0,s1), (s1,s2), (s2, s3), ..."""
+    a, b = tee(iterable)
+    next(b, None)
+    return zip(a, b)
+
 
 #############################################################
 
@@ -1221,6 +1404,48 @@ def main():
     time.sleep(2)
     ib.disconnect()
     time.sleep(0.5)
+
+
+class TestIBroke(unittest.TestCase):
+    maxDiff = None
+
+    def test_parse_trading_hours(self) -> None:
+        vecs = (
+            ('20170621:1700-1515,1530-1600;20170622:1700-1515,1530-1600', (
+             (datetime(2017, 6, 21, 17, 00), datetime(2017, 6, 21, 15, 15)),
+             (datetime(2017, 6, 21, 15, 30), datetime(2017, 6, 21, 16, 00)),
+             (datetime(2017, 6, 22, 17, 00), datetime(2017, 6, 22, 15, 15)),
+             (datetime(2017, 6, 22, 15, 30), datetime(2017, 6, 22, 16, 00)),
+            )),
+            ('20090507:0700-1830,1830-2330;20090508:CLOSED', (
+             (datetime(2009, 5, 7, 7, 00), datetime(2009, 5, 7, 18, 30)),
+             (datetime(2009, 5, 7, 18, 30), datetime(2009, 5, 7, 23, 30)),
+            )),
+            ('20170623:1715-1700;20170626:1715-1700', (
+             (datetime(2017, 6, 23, 17, 15), datetime(2017, 6, 23, 17, 00)),
+             (datetime(2017, 6, 26, 17, 15), datetime(2017, 6, 26, 17, 00)),
+            )),
+        )
+        for timestr, dts in vecs:
+            self.assertTupleEqual(tuple(Instrument._parse_trading_hours(timestr)), dts)
+
+    def test_normalize_trading_hours(self) -> None:
+        vecs = (
+            ((
+            (datetime(2017, 6, 21, 17, 00), datetime(2017, 6, 21, 15, 15)),
+            (datetime(2017, 6, 21, 15, 30), datetime(2017, 6, 21, 16, 00)),
+            (datetime(2017, 6, 22, 17, 00), datetime(2017, 6, 22, 15, 15)),
+            (datetime(2017, 6, 22, 15, 30), datetime(2017, 6, 22, 16, 00)),
+            ),
+            (
+            (datetime(2017, 6, 20, 17, 00, tzinfo=utc), datetime(2017, 6, 21, 15, 15, tzinfo=utc)),
+            (datetime(2017, 6, 21, 15, 30, tzinfo=utc), datetime(2017, 6, 21, 16, 00, tzinfo=utc)),
+            (datetime(2017, 6, 21, 17, 00, tzinfo=utc), datetime(2017, 6, 22, 15, 15, tzinfo=utc)),
+            (datetime(2017, 6, 22, 15, 30, tzinfo=utc), datetime(2017, 6, 22, 16, 00, tzinfo=utc)),
+            )),
+        )
+        for indates, outdates in vecs:
+            self.assertTupleEqual(Instrument._normalize_trading_hours(indates, utc), outdates)
 
 
 if __name__ == '__main__':

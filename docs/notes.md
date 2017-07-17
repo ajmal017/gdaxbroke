@@ -24,7 +24,7 @@ Delayed data is not forwarded through the API: you cannot get real market data w
 
 | Account Type      | Market Data | API Access | Availability
 | ------------      | ----------- | ---------- | ------------
-| Demo              | Synthesized | Yes        | All hours
+| Demo              | Synthesized | Yes        | [23/6](https://www.interactivebrokers.com/en/index.php?f=2225)
 | Paper unfunded    | Delayed     | No         | Market hours
 | Paper funded      | Real-time   | Yes        | Market hours
 | Real money funded | Real-time   | Yes        | Market hours
@@ -42,7 +42,9 @@ trading during this window.
 ### TWS Shuts Down Every Night
 Independent from the IB servers going down every night, the TWS desktop application also shuts down once a day.
 By default this happens at 11:45 PM, but the time can be configured in the settings.  The gateway does
-not do this. [IB Controller](https://github.com/ib-controller/ib-controller) can avoid the daily restart, automate logins,
+not do this. Note that one reason TWS restarts daily is that active trading causes memory usage to grow without bound,
+leading to a progressively slower and soon completely unresponsive application.  The gateway does not do this.
+[IB Controller](https://github.com/ib-controller/ib-controller) can avoid the daily restart, automate logins,
 dismiss dialogs, and much more.  Highly recommended.
 
 ### Forex
@@ -129,6 +131,17 @@ TWS can view, modify, and cancel all orders.
 If there are open orders for your client ID and TWS is set to send them on connect (the default), `openOrder` and `orderStatus` messages
 generally come very first thing.
 
+### Time
+
+[ContractDetails](https://interactivebrokers.github.io/tws-api/classIBApi_1_1ContractDetails.html#gsc.tab=0) objects, among others,
+supply times as 24-hour times with a given timezone abbreviation.  The abbreviations _seem_ (?) to be the deprecated and ambiguous
+[abbreviations used by Java](http://grepcode.com/file/repository.grepcode.com/java/root/jdk/openjdk/8u40-b25/sun/util/calendar/ZoneInfoFile.java/#219)
+(TWS is written in Java and IB is a Java shop).  For example, instruments listed on the Chicago Mercantile Exchange have market hours with a timezone
+of "CST" (Central Standard Time) during the Summer, when Chicago is actually observing CDT, Central Daylight Time.  It seems the correct
+approach to getting a usable UTC offset is to map the abbreviations to "standard" timezone names following the Java source, then use the
+the standard name with a timezone library.
+
+
 ### Disconnects
 Error code 1100 means TWS has lost its connection to IB servers, and you cannot send commands (this happens e.g. with IB's daily maintenance).
 However, market data is a separate connection and often continues even while TWS is "disconnected."  Thus you may be generating tick events
@@ -141,7 +154,7 @@ account updates.
 * https://xavierib.github.io/twsapidocs/index.html - Reference, slightly more up to date
 * http://files.meetup.com/1551526/Interactive_Brokers_API.pdf - (Java) implementation notes
 * http://holowczak.com/ib-api-tutorials-by-programming-language/ - From-scratch hand-holding tutorials for multiple languages
-* https://groups.yahoo.com/neo/groups/TWSAPI/info - Most active IB forum / user group
+* https://groups.io/g/twsapi - Most active IB forum / user group
 * https://www.interactivebrokers.com/fluxbb/viewforum.php?id=2 - Official IB forum
 
 ## Development Roadmap

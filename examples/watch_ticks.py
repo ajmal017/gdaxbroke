@@ -94,7 +94,7 @@ def main():
     conn.connect()
     log.info('Connected')
 
-    contract = make_contract('es', 'fut', 'globex', 'usd', '20161216')
+    contract = make_contract('es', 'fut', 'globex', 'usd', '20170915')
     #contract = make_contract('AAPL')
     #contract = make_contract('EUR', 'CASH', 'IDEALPRO')
     conn.reqMktData(0, contract, RTVOLUME, False)

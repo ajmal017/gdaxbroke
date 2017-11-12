@@ -11,7 +11,7 @@ in the current directory.  Existing files are appended to.
 import time, math, atexit
 from datetime import datetime
 
-from ibroke import IBroke
+from gbroke import IBroke
 
 PRINT_EVERY = 10000      #: Print a message every this many ticks (per instrument)
 SYMBOLS = {

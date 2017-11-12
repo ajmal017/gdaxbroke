@@ -25,7 +25,7 @@ def find_version(*file_paths):
 
 setup(
     name='IBroke',
-    version=find_version('ibroke.py'),
+    version=find_version('gbroke.py'),
     description='Interactive Brokers for Humans',
     long_description=long_description,
     url='https://gitlab.com/doctorj/ibroke',

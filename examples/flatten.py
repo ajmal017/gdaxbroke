@@ -9,7 +9,7 @@ This will liquidate all positions with market orders, which may be financially d
 """
 import time
 
-from ibroke import IBroke
+from gbroke import IBroke
 
 
 def main():

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Simple example using the IBroke Interactive Brokers API."""
 from time import sleep
-from ibroke import IBroke
+from gbroke import IBroke
 
 def on_bar(instrument, bar):
     """Called every second with market data `bar` namedtuple."""

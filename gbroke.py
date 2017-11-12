@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #!/usr/bin/env python3
 """
 Convenience wrapper for Interactive Brokers API.
@@ -32,11 +33,17 @@ from queue import Queue, Empty
 from typing import Optional, Tuple, Iterable, Union, Any, Callable
 import unittest
 
-from ib.opt import ibConnection
-from ib.ext.Contract import Contract
-from ib.ext.Order import Order as IBOrder
-from ib.ext.TickType import TickType
+
+import gdax
+
+#from ib.opt import ibConnection
+#from ib.ext.Contract import Contract
+#from ib.ext.Order import Order as IBOrder
+#from ib.ext.TickType import TickType
+
+
 from pytz import timezone, utc
+
 
 
 __version__ = "0.3.1"
@@ -45,21 +52,21 @@ __all__ = ('IBroke', 'Instrument', 'Order', 'Bar', 'now')
 #: Contract tuple type.  TODO: Want to be able to elide trailing values, I think.
 ContractTuple = Tuple[str, str, str, str, str, float, str]
 #: API warning codes that are not actually problems and should not be logged
-BENIGN_ERRORS = (202, 2104, 2106, 2137)     # 202 is issued when you cancel an order.
+#BENIGN_ERRORS = (202, 2104, 2106, 2137)     # 202 is issued when you cancel an order.
 #: API error codes indicating IB/TWS disconnection
-DISCONNECT_ERRORS = (504, 502, 1100, 1300, 2110)
+#DISCONNECT_ERRORS = (504, 502, 1100, 1300, 2110)
 #: API error codes indicating reconnection (after a disconnect)
-RECONNECT_CODES = (1102,)       # TODO: 1101 means you need to resubscribe to market data and account data.
+#RECONNECT_CODES = (1102,)       # TODO: 1101 means you need to resubscribe to market data and account data.
 #: When an order fails, the orderStatus message doesn't tell you why.  The description comes in a separate error message, so you gotta be able to tell if the "id" in an error message is an order id or a ticker id.
-ORDER_RELATED_ERRORS = (103, 104, 105, 106, 107, 109, 110, 111, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 129, 131, 132, 133, 134, 135, 136, 137, 140, 141, 144, 146, 147, 148, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 163, 164, 166, 167, 168, 201, 203, 303, 311, 312, 313, 314, 315, 325, 327, 328, 329, 335, 336, 337, 338, 339, 340, 341, 342, 343, 347, 348, 349, 350, 351, 352, 353, 355, 356, 358, 359, 360, 361, 362, 363, 364, 367, 368, 369, 370, 371, 372, 373, 374, 375, 376, 377, 378, 379, 380, 382, 383, 387, 388, 389, 390, 391, 392, 393, 394, 395, 396, 397, 398, 399, 400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 419, 422, 423, 424, 425, 426, 427, 428, 429, 433, 434, 435, 436, 437, 512, 515, 516, 517, 10003, 10005, 10006, 10007, 10008, 10009, 10010, 10011, 10012, 10013, 10014, 10016, 10017, 10018, 10019, 10020, 10021, 10022, 10023, 10024, 10025, 10026, 10027, 10147)
+#ORDER_RELATED_ERRORS = (103, 104, 105, 106, 107, 109, 110, 111, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 129, 131, 132, 133, 134, 135, 136, 137, 140, 141, 144, 146, 147, 148, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 163, 164, 166, 167, 168, 201, 203, 303, 311, 312, 313, 314, 315, 325, 327, 328, 329, 335, 336, 337, 338, 339, 340, 341, 342, 343, 347, 348, 349, 350, 351, 352, 353, 355, 356, 358, 359, 360, 361, 362, 363, 364, 367, 368, 369, 370, 371, 372, 373, 374, 375, 376, 377, 378, 379, 380, 382, 383, 387, 388, 389, 390, 391, 392, 393, 394, 395, 396, 397, 398, 399, 400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 419, 422, 423, 424, 425, 426, 427, 428, 429, 433, 434, 435, 436, 437, 512, 515, 516, 517, 10003, 10005, 10006, 10007, 10008, 10009, 10010, 10011, 10012, 10013, 10014, 10016, 10017, 10018, 10019, 10020, 10021, 10022, 10023, 10024, 10025, 10026, 10027, 10147)
 #: Error codes related to data requests, i.e., the error id is a ticker id.
-TICKER_RELATED_ERRORS = (101, 102, 138, 301, 300, 302, 309, 310, 316, 317, 321, 322, 354, 365, 366, 385, 386, 420, 510, 511, 519, 520, 524, 525, 529, 530,)
+#TICKER_RELATED_ERRORS = (101, 102, 138, 301, 300, 302, 309, 310, 316, 317, 321, 322, 354, 365, 366, 385, 386, 420, 510, 511, 519, 520, 524, 525, 529, 530,)
 #: Errors requesting contract details
-CONTRACT_REQUEST_ERRORS = (200,)
+#CONTRACT_REQUEST_ERRORS = (200,)
 #: A commission value you'd never expect to see.  Sometimes we get bogus commission values.
-CRAZY_HIGH_COMMISSION = 1000000
+CRAZY_HIGH_COMMISSION = 1000000 ###???
 #: A fill profit you'd never expect to see.
-CRAZY_HIGH_PROFIT = 1000000
+CRAZY_HIGH_PROFIT = 1000000     ###???
 #: Map verbosity levels to logger levels
 LOG_LEVELS = {
     0: logging.CRITICAL,
@@ -71,7 +78,7 @@ LOG_LEVELS = {
 }
 InstrumentDefaults = namedtuple('InstrumentDefaults', 'symbol sec_type exchange currency expiry strike opt_type')
 #: Default values for instrument fields
-INSTRUMENT_DEFAULTS = InstrumentDefaults(None, 'STK', 'SMART', 'USD', None, 0.0, None)
+INSTRUMENT_DEFAULTS = InstrumentDefaults(None, 'STK', 'GDAX', 'USD', None, 0.0, None)
 
 
 class Instrument:
@@ -296,16 +303,16 @@ open_interest
 """
 
 
-class IBroke:
+class GBroke:
     """Interactive Brokers connection.
 
     It is not safe to call the methods of this object from multiple threads.
     """
-    RTVOLUME = "233"
-    RT_TRADE_VOLUME = "375"
-    TICK_TYPE_RT_TRADE_VOLUME = 77
+    #RTVOLUME = "233"
+    #RT_TRADE_VOLUME = "375"
+    #TICK_TYPE_RT_TRADE_VOLUME = 77
 
-    def __init__(self, host='localhost', port=7497, client_id=None, timeout_sec=5, verbose=3):
+    def __init__(self, host='wss://ws-feed.gdax.com', port=7497, client_id=None, products="BTC-USD", timeout_sec=5, verbose=3):
         """Connect to Interactive Brokers.
 
         :param int client_id: An integer identifying which API client made an order.  In order to report
@@ -334,9 +341,12 @@ class IBroke:
         self._reconcile_open_orders_end = threading.Event() # Cleared and waited on by reconcile(), set by openOrderEnd
         self.timeout_sec = timeout_sec
         self.connected = None                       # Tri-state: None -> never been connected, False: initially was connected but not now, True: connected
-        self._conn = ibConnection(host, port, client_id)
-        self._conn.registerAll(self._handle_message)
-        self._conn.connect()
+        #self._conn = ibConnection(host, port, client_id)
+        self._conn = gdax.WebsocketClient(url=host,products=products) #product 哪里给定？
+        #self._conn.registerAll(self._handle_message)
+        #self._conn.connect()
+        self._conn.start()
+
         # The idea here is to catch errors synchronously, so if you can't connect, you know it at IBroke()
         start = time.time()
         while not self.connected:           # None initially meaning never connected; set False by _error(); set True by managedAccounts and nextValidId

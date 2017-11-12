@@ -41,7 +41,7 @@ setup(
     ],
     keywords='interactive brokers tws api finance trading',
     py_modules=['ibroke'],
-    install_requires=['ibpy2', 'pytz', 'gdax'],
+    install_requires=['pytz', 'gdax'],
     extras_require={'dev': ['pypandoc'],},
     package_data={},
 )

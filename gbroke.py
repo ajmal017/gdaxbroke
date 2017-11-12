@@ -47,7 +47,7 @@ from pytz import timezone, utc
 
 
 __version__ = "0.3.1"
-__all__ = ('IBroke', 'Instrument', 'Order', 'Bar', 'now')
+__all__ = ('GBroke', 'Instrument', 'Order', 'Bar', 'now')
 
 #: Contract tuple type.  TODO: Want to be able to elide trailing values, I think.
 ContractTuple = Tuple[str, str, str, str, str, float, str]
@@ -303,7 +303,7 @@ open_interest
 """
 
 
-class GBroke:
+class GBroke(gdax.WebsocketClient):
     """Interactive Brokers connection.
 
     It is not safe to call the methods of this object from multiple threads.

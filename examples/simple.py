@@ -9,4 +9,4 @@ def on_bar(instrument, bar):
 
 ib = GBroke()       # Connects to a locally running TWS on port 7497 by default
 ib.register("ETH-USD", on_bar, bar_size=1)     # Call `on_bar()` every 1 second with Bar namedtuple for Apple stock
-sleep(10)
+sleep(10000)

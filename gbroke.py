@@ -44,7 +44,8 @@ import json
 
 
 from pytz import timezone, utc
-
+import ciso8601
+import time
 
 
 __version__ = "0.3.1"
@@ -864,6 +865,7 @@ class GBroke(gdax.WebsocketClient):
         instrument = self._instruments.get(ticker_id)
         acc = self._ticumulators.get(ticker_id)
         handlers = self._bar_handlers.get((bar_type, bar_size, ticker_id))
+        print(acc,instrument,handlers)
         if acc is None or instrument is None or handlers is None:
             self.log.warning('No instrument, ticumulator, or handlers found for ID %d calling %s %f bar handlers', ticker_id, bar_type, bar_size)
         else:
@@ -1004,17 +1006,34 @@ class GBroke(gdax.WebsocketClient):
 
 
     def _match(self, msg):
-        acc = self._ticumulators.get(msg.product_id)
+        acc = self._ticumulators.get(msg['product_id'])
         if acc is None:
-            self.log.warning('No Ticumulator found for ticker id %d', msg.tickerId)
+            self.log.warning('No Ticumulator found for ticker id %d', msg['tickerId'])
             return
-        import ciso8601
-        import time
-        lastprice = float(msg.price)
-        lastsize  = float(msg.size)
-        _lasttime  = ciso8601.parse_datetime(msg.time)
+
+        if msg['side'] == 'buy':
+            ask = float(msg['size'])
+            asksize = float(msg['price'])
+            acc.add('ask', ask)
+            acc.add('asksize',asksize)
+        elif msg['side'] == 'sell':
+            bid = float(msg['size'])
+            bidsize = float(msg['price'])
+            acc.add('bid', bid)
+            acc.add('bidsize', bidsize)
+        else:
+            pass
+
+        lastprice = float(msg['price'])
+        lastsize  = float(msg['size'])
+        _lasttime  = ciso8601.parse_datetime(msg['time'])
         lasttime = time.mktime(_lasttime.timetuple())
         print(lastprice,lastsize,_lasttime,lasttime)
+        acc.add('last', lastprice)
+        acc.add('lastsize', lastsize)       # Ticumulator likes lastsize to come after last
+        acc.add('lasttime', lasttime / 1000)
+        #acc.add('volume', volume)
+
         #if msg.tickType == TickType.LAST_TIMESTAMP:
         #    pass # RTVOLUME is faster, more accurate, and doesn't have dupes.
             # acc.add('lasttime', int(msg.value))

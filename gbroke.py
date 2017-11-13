@@ -35,6 +35,7 @@ import unittest
 
 
 import gdax
+import json
 
 #from ib.opt import ibConnection
 #from ib.ext.Contract import Contract
@@ -81,12 +82,45 @@ InstrumentDefaults = namedtuple('InstrumentDefaults', 'symbol sec_type exchange 
 INSTRUMENT_DEFAULTS = InstrumentDefaults(None, 'STK', 'GDAX', 'USD', None, 0.0, None)
 
 
+class Contract():
+    """ generated source for class Contract """
+    m_conId = 0
+    m_symbol = ""
+    m_secType = ""
+    m_expiry = ""
+    m_strike = float()
+    m_right = ""
+    m_multiplier = ""
+    m_exchange = ""
+
+    m_currency = ""
+    m_localSymbol = ""
+    m_tradingClass = ""
+    m_primaryExch = ""  # pick a non-aggregate (ie not the SMART exchange) exchange that the contract trades on.  DO NOT SET TO SMART.
+    m_includeExpired = bool()  # can not be set to true for orders.
+
+    m_secIdType = ""  # CUSIP;SEDOL;ISIN;RIC
+    m_secId = ""
+
+    #  COMBOS
+    m_comboLegsDescrip = ""  # received in open order version 14 and up for all combos
+    m_comboLegs = []
+    #  delta neutral
+    m_underComp = None
+    def __init__(self):
+        """ generated source for method __init__ """
+        self.m_conId = 0
+        self.m_strike = 0
+        self.m_includeExpired = False
+
+
 class Instrument:
     """Represents a stock, bond, future, forex currency pair, or option.
 
     Returned by :meth:`IBroke.get_instrument`, cannot be created directly by user code.
     """
-    def __init__(self, broker, contract_details):
+    #def __init__(self, broker, contract_details):
+    def __init__(self, broker, contract):
         """Create an Instrument object defining what will be traded, at which exchange and in which currency.
 
         :param IBroke broker: :class:`IBroke` instance
@@ -94,11 +128,13 @@ class Instrument:
         """
         # TODO: The design of this class makes me uneasy.  Ideally it should be immutable, but the underlying ContractDetails can
         # change, e.g., market hours day-to-day.  And clients keep references around.
-        if not contract_details or not contract_details.m_summary:
-            raise ValueError('ContractDetails contained no Contract summary')
+        #if not contract_details or not contract_details.m_summary:
+        #    raise ValueError('ContractDetails contained no Contract summary')
+
         self._broker = broker
-        self._details = contract_details
-        self._contract = self._details.m_summary
+        #self._details = contract_details
+        self._contract = contract
+
         if not self._contract.m_conId:
             raise ValueError('Contract must have conId (obtained from contractDetails()).')
         try:
@@ -107,11 +143,11 @@ class Instrument:
         except (ValueError, TypeError):
             self._broker.log.debug("Error parsing contract ID {} multiplier '{}'; using leverage 1.0".format(self.id, self._contract.m_multiplier))
             self.leverage = 1.0
-        tz = get_timezone(self._details.m_timeZoneId)
+        #tz = get_timezone(self._details.m_timeZoneId)
         #print('TRADING HOURS', self, '\n', self._details.m_tradingHours, '\nTIMEZONE', tz)
-        self._trading_hours = self._normalize_trading_hours(self._parse_trading_hours(self._details.m_tradingHours), tz)
-        self._liquid_hours = self._normalize_trading_hours(self._parse_trading_hours(self._details.m_liquidHours), tz)
-        self._created_time = now().astimezone(tz)       # Used to know when our trading/liquid hours are stale
+        #self._trading_hours = self._normalize_trading_hours(self._parse_trading_hours(self._details.m_tradingHours), tz)
+        #self._liquid_hours = self._normalize_trading_hours(self._parse_trading_hours(self._details.m_liquidHours), tz)
+        #self._created_time = now().astimezone(tz)       # Used to know when our trading/liquid hours are stale
 
     @staticmethod
     def _parse_trading_hours(hours: str) -> Iterable[Tuple[datetime, datetime]]:
@@ -184,7 +220,7 @@ class Instrument:
     @property
     def id(self):
         """:Return: a unique ID for this instrument."""
-        return IBroke._instrument_id_from_contract(self._contract)
+        return GBroke._instrument_id_from_contract(self._contract)
 
     def tuple(self):
         """:Return: The instrument as a 7-tuple."""
@@ -312,7 +348,7 @@ class GBroke(gdax.WebsocketClient):
     #RT_TRADE_VOLUME = "375"
     #TICK_TYPE_RT_TRADE_VOLUME = 77
 
-    def __init__(self, host='wss://ws-feed.gdax.com', port=7497, client_id=None, products="BTC-USD", timeout_sec=5, verbose=3):
+    def __init__(self,host='wss://ws-feed.gdax.com/',client_id=None, timeout_sec=5, verbose=3):
         """Connect to Interactive Brokers.
 
         :param int client_id: An integer identifying which API client made an order.  In order to report
@@ -341,25 +377,52 @@ class GBroke(gdax.WebsocketClient):
         self._reconcile_open_orders_end = threading.Event() # Cleared and waited on by reconcile(), set by openOrderEnd
         self.timeout_sec = timeout_sec
         self.connected = None                       # Tri-state: None -> never been connected, False: initially was connected but not now, True: connected
+        #############################################################################
+        self.host = host
+        self.auth_client = gdax.AuthenticatedClient(key        = '8281223bbd9e645935d6c5e40a191953',
+                                                    b64secret  = '5HTW6OuBT5fQvNhEDpHtInd14iZIyialCu7lEqrDfJSxGFiJuPseFgPu1zoO0xNILkhaEX9VfxswI18S3RC8Og==',
+                                                    passphrase = 'rdsq3umh3b9',
+                                                    api_url    = "https://api-public.sandbox.gdax.com")
+        if not self.auth_client:
+            raise RuntimeError('Error connecting to IB')
+        print("You has connected sandbox gdx ")
+        #############################################################################
+
         #self._conn = ibConnection(host, port, client_id)
-        self._conn = gdax.WebsocketClient(url=host,products=products) #product 哪里给定？
+        #self._conn = gdax.WebsocketClient(url=host,products=products) #product 哪里给定？
         #self._conn.registerAll(self._handle_message)
         #self._conn.connect()
-        self._conn.start()
-
+        #self._conn.start()
         # The idea here is to catch errors synchronously, so if you can't connect, you know it at IBroke()
         start = time.time()
-        while not self.connected:           # None initially meaning never connected; set False by _error(); set True by managedAccounts and nextValidId
-            if self.connected is False or time.time() - start > timeout_sec:
-                raise RuntimeError('Error connecting to IB')
-            else:
-                time.sleep(0.1)
-        self.log.info('IBroke %s connected to %s:%d, client ID %d', __version__, host, port, client_id)
-        self._conn.reqAccountSummary(0, 'All', 'AccountType')       # TODO: Wait, show value, verify
+        #while not self.connected:           # None initially meaning never connected; set False by _error(); set True by managedAccounts and nextValidId
+        #    if self.connected is False or time.time() - start > timeout_sec:
+        #        raise RuntimeError('Error connecting to IB')
+        #    else:
+        #        time.sleep(0.1)
+        self.log.info('IBroke %s ,client ID %d', __version__, client_id)
+        #self._conn.reqAccountSummary(0, 'All', 'AccountType')       # TODO: Wait, show value, verify
         time.sleep(0.25)
-        self.reconcile()
-        self.log_positions()
-        self.log_open_orders()
+        #self.reconcile()
+        #self.log_positions()
+        #self.log_open_orders()
+
+    # class WSClient(gdax.WebsocketClient):
+    #     def on_open(self):
+    #         self.message_count = 0
+    #         print("Let's count the messages!")
+    #
+    #     def on_message(self, msg):
+    #         print("-------------------------------------------------------------------------------")
+    #         #print(json.dumps(msg, indent=4, sort_keys=True))
+    #         self.message_count += 1
+    #         self.connected = True #TODO
+    #         self._handle_message(msg)
+    #
+    #     def on_close(self):
+    #         print("-- Goodbye! --")
+    #         self.connected = False #TODO
+
 
     def get_instrument(self, symbol: Union[str, ContractTuple, int, Instrument], sec_type: str = 'STK', exchange: str = 'SMART', currency: str = 'USD', expiry: Optional[str] = None, strike: float = 0.0, opt_type: Optional[str] = None) -> Instrument:
         """Return an :class:`Instrument` object defining what will be purchased, at which exchange and in which currency.
@@ -376,6 +439,10 @@ class GBroke(gdax.WebsocketClient):
         :param strike: The strike price for options
         :param opt_type: 'PUT' or 'CALL' for options
         """
+
+
+
+        print(symbol,type(symbol))
         if isinstance(symbol, Instrument):
             return symbol
         elif isinstance(symbol, tuple):
@@ -383,19 +450,27 @@ class GBroke(gdax.WebsocketClient):
         elif isinstance(symbol, int):
             contract = Contract()
             contract.m_conId = symbol
-            inst = self._instruments.get(self._instrument_id_from_contract(contract))
-            if inst is not None:
-                return inst
+            #inst = self._instruments.get(self._instrument_id_from_contract(contract))
+            #if inst is not None:
+            #    return inst
         elif isinstance(symbol, str):
             contract = make_contract(symbol, sec_type, exchange, currency, expiry, strike, opt_type)
+            contract.m_conId = symbol
         else:
             raise ValueError("symbol must be string, int, tuple, or Instrument")
 
         # This functionality is split into request and response halves so elsewhere we can make the request in one callback and process the response in another.
-        req_id = self._request_contract_details(contract)
-        inst = self._handle_contract_details(req_id)
-        earliest, latest = inst._trading_hours[0][0], inst._trading_hours[-1][1]
-        self.log.debug('%s HOURS : %s -- %s  (%.0f h)', inst, earliest, latest, (latest - earliest).total_seconds() / 3600)
+        #req_id = self._request_contract_details(contract)
+        #inst = self._handle_contract_details(req_id)
+        #earliest, latest = inst._trading_hours[0][0], inst._trading_hours[-1][1]
+
+        #self.log.debug('%s HOURS : %s -- %s  (%.0f h)', inst, earliest, latest, (latest - earliest).total_seconds() / 3600)
+
+        #self.auth_client.buy(price='100.00',  # USD
+        #                     size='0.01',  # BTC
+        #                     product_id='BTC-USD')
+        print("contract:",contract)
+        inst = Instrument(self, contract)
         return inst
 
     def _request_contract_details(self, contract):
@@ -437,6 +512,30 @@ class GBroke(gdax.WebsocketClient):
         :param bar_type: The type of bar to generate: `'time'` to get periodic bars, or `'tick'` to get updates with every quote change.
         :param bar_size: The period of a bar in seconds.  Ignored for ``bar_type == 'tick'``.
         """
+
+        class WSClient(gdax.WebsocketClient):
+            def __init__(self,context,url,products):
+                super(WSClient, self).__init__(url = url,products = products)  #
+                self.context = context
+
+            #def initialize(self,gbroke):
+            #    self.broke = gbroke
+
+            def on_open(self):
+                self.message_count = 0
+                print("Let's count the messages!")
+
+            def on_message(self, msg):
+                print("-------------------------------------------------------------------------------")
+                # print(json.dumps(msg, indent=4, sort_keys=True))
+                self.message_count += 1
+                self.context.connected = True  # TODO
+                self.context._handle_message(msg)
+
+            def on_close(self):
+                print("-- Goodbye! --")
+                self.context.connected = False  # TODO
+
         assert bar_type in ('time', 'tick')
         assert bar_size > 0
         assert all(func is None or callable(func) for func in (on_bar, on_order, on_alert))
@@ -452,7 +551,13 @@ class GBroke(gdax.WebsocketClient):
                 self._tick_errors[instrument.id] = Queue()      # _error() stuffs an exception in if it gets an error message; unblock_register stuffs None if it gets a tick
                 self._tick_handlers[instrument.id].append(unblock_register)
                 self._ticumulators[instrument.id] = Ticumulator()
-                self._conn.reqMktData(instrument.id, instrument._contract, self.RTVOLUME, snapshot=False)       # Subscribe to continuous updates
+
+                #self._conn.reqMktData(instrument.id, instrument._contract, self.RTVOLUME, snapshot=False)       # Subscribe to continuous updates
+                print(self.host,instrument.symbol)
+                self._conn = WSClient(self,url=self.host,products=instrument.symbol) #product 哪里给定？
+                #self._conn.initialize(self)
+                self._conn.start()
+                print("start ..... ")
                 # TODO: Request an initial snapshot so we can start sending ticks without NaNs.
                 # Hrm: Snapshots seem to take like 15 seconds...
                 # self._conn.reqMktData(instrument.id, instrument._contract, None, snapshot=True)        # Request all fields once initially, so we don't have to wait for them to fill in
@@ -486,245 +591,245 @@ class GBroke(gdax.WebsocketClient):
         if on_alert:
             self._alert_hanlders[instrument.id].append(on_alert)
 
-    def order(self, instrument: Instrument, quantity: int, limit: float = 0.0, stop: float = 0.0, target: float = 0.0) -> Optional[Order]:
-        """Place an order and return an Order object, or None if no order was made.
-
-        The returned object does not change (will not update).
-        """
-        if target:
-            raise NotImplementedError()
-        if quantity == 0:
-            return None
-        if not self.connected:
-            self.log.error('Cannot order when not connected')
-            return None
-
-        typemap = {
-            (False, False): 'MKT',
-            (False, True):  'LMT',
-            (True, False):  'STP',
-            (True, True):   'STP LMT',
-        }
-
-        # TODO: Check stop limit values are consistent
-        order = IBOrder()
-        order.m_action = 'BUY' if quantity >= 0 else 'SELL'
-        order.m_totalQuantity = abs(quantity)
-        order.m_orderType = typemap[(bool(stop), bool(limit))]
-        order.m_lmtPrice = limit
-        order.m_auxPrice = stop
-        order.m_tif = 'DAY'     # Time in force: DAY, GTC, IOC, GTD
-        order.m_allOrNone = False   # Fill or Kill
-        order.m_goodTillDate = "" #  FORMAT: 20060505 08:00:00 {time zone}
-        order.m_clientId = self._conn.clientId
-
-        order_id = self._next_order_id()
-        self.log.debug('ORDER %d: %s %s', order_id, obj2dict(instrument._contract), obj2dict(order))
-        self._orders[order_id] = Order._from_ib(order, order_id, instrument)
-        self.log.info('ORDER %s', self._orders[order_id])
-        self._conn.placeOrder(order_id, instrument._contract, order)        # This needs to come after updating self._orders
-        return copy(self._orders[order_id])
-
-    def order_target(self, instrument, quantity, limit=0.0, stop=0.0):
-        """Place orders as necessary to bring position in `instrument` to `quantity`.
-
-        Bracket orders (with `target`) don't really make sense here.
-        """
-        return self.order(instrument, quantity - self.get_position(instrument), limit=limit, stop=stop)
-
-    def get_position(self, instrument):
-        """:Return: the number of shares of `instrument` held (negative for short)."""
-        pos = self._positions.get(instrument.id)
-        if pos is None:
-            self.log.warning('get_position() for unknown instrument {}'.format(instrument))
-            return 0
-        return pos[0]
-
-    def get_positions(self):
-        """:Return: an iterator of ``(instrument, position, avg_cost)`` tuples for any non-zero positions in this account."""
-        for inst_id, (pos, avg_cost) in self._positions.items():
-            if pos:
-                yield (self._instruments.get(inst_id), pos, avg_cost)
-
-    def get_cost(self, instrument):
-        """:Return: the average cost of currently held shares of `instrument`.  If no shares held, return None."""
-        pos = self._positions.get(instrument.id)
-        if pos is None:
-            self.log.warning('get_cost() for unknown instrument {}'.format(instrument))
-            return None
-        return pos[1] or None
-
-    def cancel(self, order):
-        """Cancel an `order`."""
-        self.log.info('CANCEL %s', order)
-        if not self.connected:
-            self.log.error('Cannot cancel order when disconnected')
-        else:
-            self._conn.cancelOrder(order.id)
-
-    def cancel_all(self, instrument=None, hard_global_cancel=False):
-        """Cancel all open orders.  If given, only cancel orders for `instrument`.
-
-        :param bool hard_global_cancel: If True, issue a global cancel for ALL orders for this ENTIRE account,
-          including orders made by other API clients and the TWS GUI.
-        """
-        # TODO: We might want to request all open orders, since our order status tracking might not be perfect.
-        if hard_global_cancel:
-            if instrument is not None:
-                raise ValueError('instrument must be None for hard_global_cancel')
-            self.log.info('GLOBAL CANCEL')
-            self._conn.reqGlobalCancel()
-        else:
-            for order in self._orders.values():
-                if order.open and (instrument is None or order.instrument == instrument):
-                    self.cancel(order)
-
-    def flatten(self, instrument=None, hard_global_cancel=False):
-        """Cancel all open orders and set position to 0 for all instruments, or only for `instrument` if given.
-
-        :param bool hard_global_cancel: If True, issue a global cancel for ALL orders for this ENTIRE account,
-          including orders made by other API clients and the TWS GUI.
-        """
-        self.cancel_all(instrument, hard_global_cancel=hard_global_cancel)
-        time.sleep(1)       # TODO: Maybe wait for everything to be cancelled.
-        for inst in ((instrument,) if instrument else self._instruments.values()):
-            self.order_target(inst, 0)
-
-    def get_open_orders(self, instrument=None):
-        """:Return: an iterable of all open orders, or only those for `instrument` if given."""
-        for order in self._orders.values():
-            if order.open and (instrument is None or order.instrument == instrument):
-                yield copy(order)
-
-    def reconcile(self):
-        """Refresh the local state of orders and positions with those from the server.
-
-        Note: Orders and positions can change while this method is executing.  To be sure
-        the state is synced, cancel all orders and pause for a bit before calling this method.
-
-        This method will retrieve all open orders for all API clients for this account.
-
-        This method blocks until all orders and positions are synced.
-
-        Updates the next order id.
-        """
-        self.log.debug('RECONCILE POSITIONS')
-        if not self._reconcile_contract_requests.empty():
-            strays = tuple(iter_except(self._reconcile_contract_requests.get_nowait, Empty))
-            self.log.warning("reconcile() queue not empty: %s Attempt to call reconcile more than once concurrently?", strays)
-        self._conn.reqPositions()               # generates _position() messages, which requests contract details and stuffs the request IDs into the _reconcile_contract_requests queue; positionEnd() stuffs a None
-        # _position() itself will call _request_contract_details, and we wait on the results here.
-        # Wait on all contractDetails request IDs to fill the queue, plus None from positionEnd; put into a tuple
-        req_ids = tuple(iter_except(lambda: self._reconcile_contract_requests.get(timeout=self.timeout_sec), Empty))
-        if not req_ids or req_ids[-1] is not None:
-            self.log.warning("reconcile() timed out waiting for positions; positions may be stale")
-
-        for req_id in req_ids:
-            if req_id is not None:
-                try:
-                    self._handle_contract_details(req_id)
-                except Exception as err:
-                    self.log.error('In reconcile() for contract request %d: %s', req_id, str(err).replace('\n', ' '))
-
-        # Get open orders second, since they may reference the instruments we just created above
-        self.log.debug('RECONCILE ORDERS')
-        self._reconcile_open_orders_end.clear()
-        self._conn.reqAllOpenOrders()
-        if not self._reconcile_open_orders_end.wait(timeout=self.timeout_sec):
-            self.log.error('reconcile() timed out waiting for all open orders')
-
-        self._conn.reqIds(-1)
-        self.log.debug('RECONCILE END')
-
-    def log_positions(self):
-        """Log positions at INFO."""
-        for inst, pos, cost in self.get_positions():
-            self.log.info('POSITION %d @ %.2f %s', pos, cost, inst)
-
-    def log_open_orders(self):
-        """Log open orders at INFO."""
-        for order in self.get_open_orders():
-            self.log.info('OPEN ORDER %s', order)
-
-    def market_open(self, instrument: Instrument, time: Optional[datetime] = None, afterhours: bool = True) -> bool:
-        """:Return: True if `instrument` trades at the given `time`, which defaults to now.
-
-        This only works for (roughly) the current and following day, and may not work for times in the past.
-
-        :param time: Must be a timezone-aware datetime to compare to market hours.  Defaults to now.
-        :param afterhours: If ``afterhours = False``, ``market_open()`` will only return True for times
-          inside normal market hours.  If ``afterhours = True``, it will return true for times inside
-          afterhours trading as well.  (Technically ``afterhours = False`` means only return true during
-          "liquid" market hours, according to IB.)
-        :raises ValueError: If `time` is outside the known schedule for this instrument.  Usually that's only
-          today and tomorrow.
-        """
-        # This is an IBroke method instead of Instrument to avoid mutuable Instrument state.
-        # The info underlying an Instrument can change (e.g. market hours), but we want the canonical Instrument with the latest info.
-        # So we always look it up from IBroke, refreshing if necessary.
-        now_ = now()
-        if time is None:
-            time = now_
-        if not time.tzinfo:
-            raise ValueError('Time must have a timezone.')
-
-        instrument = self._ensure_fresh_instrument_data(instrument)
-        open_hours = instrument._trading_hours if afterhours else instrument._liquid_hours
-        assert open_hours, 'Empty trading hours'
-        earliest, latest = open_hours[0][0], open_hours[-1][1]
-        if time < earliest and time < now_ - timedelta(seconds=self.timeout_sec):
-            raise ValueError('Time {} earlier than available schedule {}'.format(time, earliest))
-        if time > latest:
-            self.log.warning('market_open() request {} beyond time horizon {}, assuming closed.'.format(time, latest))
-        return any(start <= time <= end for start, end in open_hours)
-
-    def market_hours(self, instrument: Instrument, afterhours: bool = True) -> Tuple[Optional[datetime], Optional[datetime]]:
-        """:Return: the next market opening and closing time of the given `instrument`.
-
-        Note either may be sooner than the other, and either or both may be None.
-
-        :param afterhours: If True, return next times for after hours trading.
-          If False, return next times for regular trading hours.
-        """
-        now_ = now()
-        instrument = self._ensure_fresh_instrument_data(instrument)      # Update market hours if necessary
-        open_hours = instrument._trading_hours if afterhours else instrument._liquid_hours
-        latest = open_hours[-1][1] if open_hours else None
-        if not latest or now_ > latest:
-            self.log.warning('market_hours() request {} beyond time horizon {}, no hours available.'.format(now_, latest))
-        open_, close = None, None
-        for start, end in open_hours:
-            if open_ is None and now_ <= start:
-                open_ = start
-            if close is None and now_ <= end:
-                close = end
-        return open_, close
-
-    def _ensure_fresh_instrument_data(self, instrument: Instrument) -> Instrument:
-        """Check if market hours data for `instrument` is stale and re-request, returning a new Instrument."""
-        instrument = self.get_instrument(instrument.id)  # Lookup canonical Instrument by id; passing an Instrument returns the same object.
-        # If market hours data is out of date, refresh.
-        # Since we only get data for today and tomorrow, and not data for closed days, refresh if today != instrument timestamp day
-        # (Hard to do just based on our market hours data structure, without timestamp, since entire closed days aren't represented.)
-        today = now().astimezone(instrument._created_time.tzinfo).date()
-        if instrument._created_time.date() != today:
-            earliest, latest = instrument._trading_hours[0][0], instrument._trading_hours[-1][1]
-            self.log.debug('REFRESH {} before: {} -- {}  ({:.0f} h)'.format(instrument, earliest, latest, (latest - earliest).total_seconds() / 3600))
-            req_id = self._request_contract_details(instrument._contract)
-            instrument = self._handle_contract_details(req_id)  # TODO: Waiting might lead to deadlock if we're called in another request?
-            earliest, latest = instrument._trading_hours[0][0], instrument._trading_hours[-1][1]
-            self.log.debug('REFRESH {} after : {} -- {}  ({:.0f} h)'.format(instrument, earliest, latest, (latest - earliest).total_seconds() / 3600))
-        return instrument
-
-    def disconnect(self):
-        """Disconnect from IB, rendering this object mostly useless."""
-        self.connected = False
-        self._conn.disconnect()
-
-    def _next_order_id(self):
-        """Increment the internal order id counter and return it."""
-        self.__next_order_id += 1
-        return self.__next_order_id
+    # def order(self, instrument: Instrument, quantity: int, limit: float = 0.0, stop: float = 0.0, target: float = 0.0) -> Optional[Order]:
+    #     """Place an order and return an Order object, or None if no order was made.
+    #
+    #     The returned object does not change (will not update).
+    #     """
+    #     if target:
+    #         raise NotImplementedError()
+    #     if quantity == 0:
+    #         return None
+    #     if not self.connected:
+    #         self.log.error('Cannot order when not connected')
+    #         return None
+    #
+    #     typemap = {
+    #         (False, False): 'MKT',
+    #         (False, True):  'LMT',
+    #         (True, False):  'STP',
+    #         (True, True):   'STP LMT',
+    #     }
+    #
+    #     # TODO: Check stop limit values are consistent
+    #     order = IBOrder()
+    #     order.m_action = 'BUY' if quantity >= 0 else 'SELL'
+    #     order.m_totalQuantity = abs(quantity)
+    #     order.m_orderType = typemap[(bool(stop), bool(limit))]
+    #     order.m_lmtPrice = limit
+    #     order.m_auxPrice = stop
+    #     order.m_tif = 'DAY'     # Time in force: DAY, GTC, IOC, GTD
+    #     order.m_allOrNone = False   # Fill or Kill
+    #     order.m_goodTillDate = "" #  FORMAT: 20060505 08:00:00 {time zone}
+    #     order.m_clientId = self._conn.clientId
+    #
+    #     order_id = self._next_order_id()
+    #     self.log.debug('ORDER %d: %s %s', order_id, obj2dict(instrument._contract), obj2dict(order))
+    #     self._orders[order_id] = Order._from_ib(order, order_id, instrument)
+    #     self.log.info('ORDER %s', self._orders[order_id])
+    #     self._conn.placeOrder(order_id, instrument._contract, order)        # This needs to come after updating self._orders
+    #     return copy(self._orders[order_id])
+    #
+    # def order_target(self, instrument, quantity, limit=0.0, stop=0.0):
+    #     """Place orders as necessary to bring position in `instrument` to `quantity`.
+    #
+    #     Bracket orders (with `target`) don't really make sense here.
+    #     """
+    #     return self.order(instrument, quantity - self.get_position(instrument), limit=limit, stop=stop)
+    #
+    # def get_position(self, instrument):
+    #     """:Return: the number of shares of `instrument` held (negative for short)."""
+    #     pos = self._positions.get(instrument.id)
+    #     if pos is None:
+    #         self.log.warning('get_position() for unknown instrument {}'.format(instrument))
+    #         return 0
+    #     return pos[0]
+    #
+    # def get_positions(self):
+    #     """:Return: an iterator of ``(instrument, position, avg_cost)`` tuples for any non-zero positions in this account."""
+    #     for inst_id, (pos, avg_cost) in self._positions.items():
+    #         if pos:
+    #             yield (self._instruments.get(inst_id), pos, avg_cost)
+    #
+    # def get_cost(self, instrument):
+    #     """:Return: the average cost of currently held shares of `instrument`.  If no shares held, return None."""
+    #     pos = self._positions.get(instrument.id)
+    #     if pos is None:
+    #         self.log.warning('get_cost() for unknown instrument {}'.format(instrument))
+    #         return None
+    #     return pos[1] or None
+    #
+    # def cancel(self, order):
+    #     """Cancel an `order`."""
+    #     self.log.info('CANCEL %s', order)
+    #     if not self.connected:
+    #         self.log.error('Cannot cancel order when disconnected')
+    #     else:
+    #         self._conn.cancelOrder(order.id)
+    #
+    # def cancel_all(self, instrument=None, hard_global_cancel=False):
+    #     """Cancel all open orders.  If given, only cancel orders for `instrument`.
+    #
+    #     :param bool hard_global_cancel: If True, issue a global cancel for ALL orders for this ENTIRE account,
+    #       including orders made by other API clients and the TWS GUI.
+    #     """
+    #     # TODO: We might want to request all open orders, since our order status tracking might not be perfect.
+    #     if hard_global_cancel:
+    #         if instrument is not None:
+    #             raise ValueError('instrument must be None for hard_global_cancel')
+    #         self.log.info('GLOBAL CANCEL')
+    #         self._conn.reqGlobalCancel()
+    #     else:
+    #         for order in self._orders.values():
+    #             if order.open and (instrument is None or order.instrument == instrument):
+    #                 self.cancel(order)
+    #
+    # def flatten(self, instrument=None, hard_global_cancel=False):
+    #     """Cancel all open orders and set position to 0 for all instruments, or only for `instrument` if given.
+    #
+    #     :param bool hard_global_cancel: If True, issue a global cancel for ALL orders for this ENTIRE account,
+    #       including orders made by other API clients and the TWS GUI.
+    #     """
+    #     self.cancel_all(instrument, hard_global_cancel=hard_global_cancel)
+    #     time.sleep(1)       # TODO: Maybe wait for everything to be cancelled.
+    #     for inst in ((instrument,) if instrument else self._instruments.values()):
+    #         self.order_target(inst, 0)
+    #
+    # def get_open_orders(self, instrument=None):
+    #     """:Return: an iterable of all open orders, or only those for `instrument` if given."""
+    #     for order in self._orders.values():
+    #         if order.open and (instrument is None or order.instrument == instrument):
+    #             yield copy(order)
+    #
+    # def reconcile(self):
+    #     """Refresh the local state of orders and positions with those from the server.
+    #
+    #     Note: Orders and positions can change while this method is executing.  To be sure
+    #     the state is synced, cancel all orders and pause for a bit before calling this method.
+    #
+    #     This method will retrieve all open orders for all API clients for this account.
+    #
+    #     This method blocks until all orders and positions are synced.
+    #
+    #     Updates the next order id.
+    #     """
+    #     self.log.debug('RECONCILE POSITIONS')
+    #     if not self._reconcile_contract_requests.empty():
+    #         strays = tuple(iter_except(self._reconcile_contract_requests.get_nowait, Empty))
+    #         self.log.warning("reconcile() queue not empty: %s Attempt to call reconcile more than once concurrently?", strays)
+    #     self._conn.reqPositions()               # generates _position() messages, which requests contract details and stuffs the request IDs into the _reconcile_contract_requests queue; positionEnd() stuffs a None
+    #     # _position() itself will call _request_contract_details, and we wait on the results here.
+    #     # Wait on all contractDetails request IDs to fill the queue, plus None from positionEnd; put into a tuple
+    #     req_ids = tuple(iter_except(lambda: self._reconcile_contract_requests.get(timeout=self.timeout_sec), Empty))
+    #     if not req_ids or req_ids[-1] is not None:
+    #         self.log.warning("reconcile() timed out waiting for positions; positions may be stale")
+    #
+    #     for req_id in req_ids:
+    #         if req_id is not None:
+    #             try:
+    #                 self._handle_contract_details(req_id)
+    #             except Exception as err:
+    #                 self.log.error('In reconcile() for contract request %d: %s', req_id, str(err).replace('\n', ' '))
+    #
+    #     # Get open orders second, since they may reference the instruments we just created above
+    #     self.log.debug('RECONCILE ORDERS')
+    #     self._reconcile_open_orders_end.clear()
+    #     self._conn.reqAllOpenOrders()
+    #     if not self._reconcile_open_orders_end.wait(timeout=self.timeout_sec):
+    #         self.log.error('reconcile() timed out waiting for all open orders')
+    #
+    #     self._conn.reqIds(-1)
+    #     self.log.debug('RECONCILE END')
+    #
+    # def log_positions(self):
+    #     """Log positions at INFO."""
+    #     for inst, pos, cost in self.get_positions():
+    #         self.log.info('POSITION %d @ %.2f %s', pos, cost, inst)
+    #
+    # def log_open_orders(self):
+    #     """Log open orders at INFO."""
+    #     for order in self.get_open_orders():
+    #         self.log.info('OPEN ORDER %s', order)
+    #
+    # def market_open(self, instrument: Instrument, time: Optional[datetime] = None, afterhours: bool = True) -> bool:
+    #     """:Return: True if `instrument` trades at the given `time`, which defaults to now.
+    #
+    #     This only works for (roughly) the current and following day, and may not work for times in the past.
+    #
+    #     :param time: Must be a timezone-aware datetime to compare to market hours.  Defaults to now.
+    #     :param afterhours: If ``afterhours = False``, ``market_open()`` will only return True for times
+    #       inside normal market hours.  If ``afterhours = True``, it will return true for times inside
+    #       afterhours trading as well.  (Technically ``afterhours = False`` means only return true during
+    #       "liquid" market hours, according to IB.)
+    #     :raises ValueError: If `time` is outside the known schedule for this instrument.  Usually that's only
+    #       today and tomorrow.
+    #     """
+    #     # This is an IBroke method instead of Instrument to avoid mutuable Instrument state.
+    #     # The info underlying an Instrument can change (e.g. market hours), but we want the canonical Instrument with the latest info.
+    #     # So we always look it up from IBroke, refreshing if necessary.
+    #     now_ = now()
+    #     if time is None:
+    #         time = now_
+    #     if not time.tzinfo:
+    #         raise ValueError('Time must have a timezone.')
+    #
+    #     instrument = self._ensure_fresh_instrument_data(instrument)
+    #     open_hours = instrument._trading_hours if afterhours else instrument._liquid_hours
+    #     assert open_hours, 'Empty trading hours'
+    #     earliest, latest = open_hours[0][0], open_hours[-1][1]
+    #     if time < earliest and time < now_ - timedelta(seconds=self.timeout_sec):
+    #         raise ValueError('Time {} earlier than available schedule {}'.format(time, earliest))
+    #     if time > latest:
+    #         self.log.warning('market_open() request {} beyond time horizon {}, assuming closed.'.format(time, latest))
+    #     return any(start <= time <= end for start, end in open_hours)
+    #
+    # def market_hours(self, instrument: Instrument, afterhours: bool = True) -> Tuple[Optional[datetime], Optional[datetime]]:
+    #     """:Return: the next market opening and closing time of the given `instrument`.
+    #
+    #     Note either may be sooner than the other, and either or both may be None.
+    #
+    #     :param afterhours: If True, return next times for after hours trading.
+    #       If False, return next times for regular trading hours.
+    #     """
+    #     now_ = now()
+    #     instrument = self._ensure_fresh_instrument_data(instrument)      # Update market hours if necessary
+    #     open_hours = instrument._trading_hours if afterhours else instrument._liquid_hours
+    #     latest = open_hours[-1][1] if open_hours else None
+    #     if not latest or now_ > latest:
+    #         self.log.warning('market_hours() request {} beyond time horizon {}, no hours available.'.format(now_, latest))
+    #     open_, close = None, None
+    #     for start, end in open_hours:
+    #         if open_ is None and now_ <= start:
+    #             open_ = start
+    #         if close is None and now_ <= end:
+    #             close = end
+    #     return open_, close
+    #
+    # def _ensure_fresh_instrument_data(self, instrument: Instrument) -> Instrument:
+    #     """Check if market hours data for `instrument` is stale and re-request, returning a new Instrument."""
+    #     instrument = self.get_instrument(instrument.id)  # Lookup canonical Instrument by id; passing an Instrument returns the same object.
+    #     # If market hours data is out of date, refresh.
+    #     # Since we only get data for today and tomorrow, and not data for closed days, refresh if today != instrument timestamp day
+    #     # (Hard to do just based on our market hours data structure, without timestamp, since entire closed days aren't represented.)
+    #     today = now().astimezone(instrument._created_time.tzinfo).date()
+    #     if instrument._created_time.date() != today:
+    #         earliest, latest = instrument._trading_hours[0][0], instrument._trading_hours[-1][1]
+    #         self.log.debug('REFRESH {} before: {} -- {}  ({:.0f} h)'.format(instrument, earliest, latest, (latest - earliest).total_seconds() / 3600))
+    #         req_id = self._request_contract_details(instrument._contract)
+    #         instrument = self._handle_contract_details(req_id)  # TODO: Waiting might lead to deadlock if we're called in another request?
+    #         earliest, latest = instrument._trading_hours[0][0], instrument._trading_hours[-1][1]
+    #         self.log.debug('REFRESH {} after : {} -- {}  ({:.0f} h)'.format(instrument, earliest, latest, (latest - earliest).total_seconds() / 3600))
+    #     return instrument
+    #
+    # def disconnect(self):
+    #     """Disconnect from IB, rendering this object mostly useless."""
+    #     self.connected = False
+    #     self._conn.disconnect()
+    #
+    # def _next_order_id(self):
+    #     """Increment the internal order id counter and return it."""
+    #     self.__next_order_id += 1
+    #     return self.__next_order_id
 
     def _call_order_handlers(self, order):
         """Call any order handlers registered for ``order.instrument``."""
@@ -785,133 +890,129 @@ class GBroke(gdax.WebsocketClient):
         if self.verbose >= 5:
             self.log.debug('MSG %s', str(msg))
 
-        name = getattr(msg, 'typeName', None)
+        #name = getattr(msg, 'typeName', None)
+        #name = getattr(msg, 'type', None)
+        name = msg["type"]
+        print("debug msg:",msg)
+
         if not name or not name.isidentifier():
             self.log.error('Invalid message name %s', name)
             return
         handler = getattr(self, '_' + name, self._defaultHandler)
+        print(handler)
         if not callable(handler):
             self.log.error("Message handler '%s' (type %s) is not callable", str(handler), type(handler))
             return
         handler(msg)
 
-    def _error(self, msg):
-        """Handle error messages from the API."""
-        code = getattr(msg, 'errorCode', None)
-        if not isinstance(code, int):
-            self.log.error(str(msg).replace('\n', ' '))
-        elif code in BENIGN_ERRORS:
-            pass
-        elif code in DISCONNECT_ERRORS:
-            self.log.error(msg.errorMsg.replace('\n', ' ') + ' [{}]'.format(msg.errorCode))
-            self.connected = False
-            self._call_alert_handlers('Disconnect')
-        elif code in RECONNECT_CODES:
-            # I originally thought receipt of any non-error message meant we must be (re-)connected, but it turns out market data (tickXXX messages)
-            # are separate connections from commands, and you can be connected to none, either, or both.  self.connected means the command
-            # connection.  So we need to wait specifically for a reconnect message (and not just any message) to set self.connected.
-            self.connected = True
-            self._call_alert_handlers('Reconnect')
-        elif 2100 <= code < 2200:
-            self.log.warning(msg.errorMsg.replace('\n', ' ') + ' [{}]'.format(msg.errorCode))
-        else:
-            if code in ORDER_RELATED_ERRORS:         # TODO: Some of these are actually warnings (like 399, sometimes...?)...
-                order = self._orders.get(msg.id)
-                errorMsg = msg.errorMsg.replace('\n', ' ')
-                self.log.error('ORDER ERR %s %s [%d]', order, errorMsg, code)
-                if order:
-                    order.cancelled = True
-                    order.open = False
-                    order.message = errorMsg
-                    # TODO: This "error" changes the price but does not cancel (not sure of code): "Order Message:\nSELL 2 ES DEC'16\nWarning: Your order was repriced so as not to cross a related resting order"
-                    self._call_order_handlers(order)
 
-            elif code in TICKER_RELATED_ERRORS:
-                self.log.error(str(msg).replace('\n', ' '))
-                err_q = self._tick_errors.get(msg.id)       # register() puts a Queue here and waits for any errors (with timeout)
-                if err_q is None:
-                    self.log.warning('Got ticker error for unexpected request id {}: {} [{}]'.format(msg.id, msg.errorMsg.replace('\n', ' '), code))
-                else:
-                    err_q.put_nowait(ValueError('{} [{}]'.format(msg.errorMsg.replace('\n', ' '), code)))
+    # def _error(self, msg):
+    #     """Handle error messages from the API."""
+    #     code = getattr(msg, 'errorCode', None)
+    #     if not isinstance(code, int):
+    #         self.log.error(str(msg).replace('\n', ' '))
+    #     elif code in BENIGN_ERRORS:
+    #         pass
+    #     elif code in DISCONNECT_ERRORS:
+    #         self.log.error(msg.errorMsg.replace('\n', ' ') + ' [{}]'.format(msg.errorCode))
+    #         self.connected = False
+    #         self._call_alert_handlers('Disconnect')
+    #     elif code in RECONNECT_CODES:
+    #         # I originally thought receipt of any non-error message meant we must be (re-)connected, but it turns out market data (tickXXX messages)
+    #         # are separate connections from commands, and you can be connected to none, either, or both.  self.connected means the command
+    #         # connection.  So we need to wait specifically for a reconnect message (and not just any message) to set self.connected.
+    #         self.connected = True
+    #         self._call_alert_handlers('Reconnect')
+    #     elif 2100 <= code < 2200:
+    #         self.log.warning(msg.errorMsg.replace('\n', ' ') + ' [{}]'.format(msg.errorCode))
+    #     else:
+    #         if code in ORDER_RELATED_ERRORS:         # TODO: Some of these are actually warnings (like 399, sometimes...?)...
+    #             order = self._orders.get(msg.id)
+    #             errorMsg = msg.errorMsg.replace('\n', ' ')
+    #             self.log.error('ORDER ERR %s %s [%d]', order, errorMsg, code)
+    #             if order:
+    #                 order.cancelled = True
+    #                 order.open = False
+    #                 order.message = errorMsg
+    #                 # TODO: This "error" changes the price but does not cancel (not sure of code): "Order Message:\nSELL 2 ES DEC'16\nWarning: Your order was repriced so as not to cross a related resting order"
+    #                 self._call_order_handlers(order)
+    #
+    #         elif code in TICKER_RELATED_ERRORS:
+    #             self.log.error(str(msg).replace('\n', ' '))
+    #             err_q = self._tick_errors.get(msg.id)       # register() puts a Queue here and waits for any errors (with timeout)
+    #             if err_q is None:
+    #                 self.log.warning('Got ticker error for unexpected request id {}: {} [{}]'.format(msg.id, msg.errorMsg.replace('\n', ' '), code))
+    #             else:
+    #                 err_q.put_nowait(ValueError('{} [{}]'.format(msg.errorMsg.replace('\n', ' '), code)))
+    #
+    #         elif code in CONTRACT_REQUEST_ERRORS:
+    #             self.log.error(str(msg).replace('\n', ' '))
+    #             if msg.id >= len(self._contract_details):
+    #                 self.log.error('No request slot for contract details {} found'.format(msg.id))
+    #             else:
+    #                 self._contract_details[msg.id].put_nowait(ValueError(msg.errorMsg))
+    #                 self._contract_details[msg.id].put_nowait(None)     # None signals end of messages in queue
+    #
+    #         else:
+    #             self.log.error(msg.errorMsg.replace('\n', ' ') + ' [{}]'.format(msg.errorCode))
+    #
+    # def _managedAccounts(self, msg):
+    #     """Save the account number."""
+    #     self.connected = True
+    #     accts = msg.accountsList.split(',')
+    #     if len(accts) != 1:
+    #         raise ValueError('Multiple accounts not supported.  Accounts: {}'.format(accts))
+    #     self.account = accts[0]
+    #     if self.account and self.account_type:
+    #         self.log.info('Account %s type %s', self.account, self.account_type)
+    #
+    # def _accountSummary(self, msg):
+    #     """Save the account type."""
+    #     if msg.tag == 'AccountType':
+    #         self.account_type = msg.value
+    #     if self.account and self.account_type:
+    #         self.log.info('Account %s type %s', self.account, self.account_type)
+    #
+    # def _tickSize(self, msg):
+    #     """Called when market data tick sizes change."""
+    #     acc = self._ticumulators.get(msg.tickerId)
+    #     if acc is None:
+    #         self.log.warning('No Ticumulator found for ticker id %d', msg.tickerId)
+    #         return
+    #     if msg.field == TickType.BID_SIZE:
+    #         acc.add('bidsize', msg.size)
+    #     elif msg.field == TickType.ASK_SIZE:
+    #         acc.add('asksize', msg.size)
+    #     elif msg.field == TickType.LAST_SIZE:
+    #         pass    # RTVOLUME is faster, more accurate, and doesn't have dupes.
+    #         # acc.add('lastsize', msg.size)
+    #     elif msg.field == TickType.VOLUME:
+    #         pass
+    #         # VOLUME only prints rarely, can be inaccurate, and differs widely from RTVOLUME.  Prefer RTVOLUME instead.
+    #         # if math.isnan(acc.volume):
+    #         #    acc.add('volume', msg.size)
+    #     elif msg.field == TickType.OPEN_INTEREST:
+    #         acc.add('open_interest', msg.size)
+    #
+    #     self._call_tick_handlers(msg.tickerId, acc.peek())
+    def _received(self, msg):
+        pass
+    def _open(self, msg):
+        pass
+    def _down(self, msg):
+        pass
 
-            elif code in CONTRACT_REQUEST_ERRORS:
-                self.log.error(str(msg).replace('\n', ' '))
-                if msg.id >= len(self._contract_details):
-                    self.log.error('No request slot for contract details {} found'.format(msg.id))
-                else:
-                    self._contract_details[msg.id].put_nowait(ValueError(msg.errorMsg))
-                    self._contract_details[msg.id].put_nowait(None)     # None signals end of messages in queue
-
-            else:
-                self.log.error(msg.errorMsg.replace('\n', ' ') + ' [{}]'.format(msg.errorCode))
-
-    def _managedAccounts(self, msg):
-        """Save the account number."""
-        self.connected = True
-        accts = msg.accountsList.split(',')
-        if len(accts) != 1:
-            raise ValueError('Multiple accounts not supported.  Accounts: {}'.format(accts))
-        self.account = accts[0]
-        if self.account and self.account_type:
-            self.log.info('Account %s type %s', self.account, self.account_type)
-
-    def _accountSummary(self, msg):
-        """Save the account type."""
-        if msg.tag == 'AccountType':
-            self.account_type = msg.value
-        if self.account and self.account_type:
-            self.log.info('Account %s type %s', self.account, self.account_type)
-
-    def _tickSize(self, msg):
-        """Called when market data tick sizes change."""
-        acc = self._ticumulators.get(msg.tickerId)
+    def _match(self, msg):
+        acc = self._ticumulators.get(msg.product_id)
         if acc is None:
             self.log.warning('No Ticumulator found for ticker id %d', msg.tickerId)
             return
-        if msg.field == TickType.BID_SIZE:
-            acc.add('bidsize', msg.size)
-        elif msg.field == TickType.ASK_SIZE:
-            acc.add('asksize', msg.size)
-        elif msg.field == TickType.LAST_SIZE:
-            pass    # RTVOLUME is faster, more accurate, and doesn't have dupes.
-            # acc.add('lastsize', msg.size)
-        elif msg.field == TickType.VOLUME:
-            pass
-            # VOLUME only prints rarely, can be inaccurate, and differs widely from RTVOLUME.  Prefer RTVOLUME instead.
-            # if math.isnan(acc.volume):
-            #    acc.add('volume', msg.size)
-        elif msg.field == TickType.OPEN_INTEREST:
-            acc.add('open_interest', msg.size)
-
-        self._call_tick_handlers(msg.tickerId, acc.peek())
-
-    def _tickPrice(self, msg):
-        """Called when market data tick prices change."""
-        acc = self._ticumulators.get(msg.tickerId)
-        if acc is None:
-            self.log.warning('No Ticumulator found for ticker id %d', msg.tickerId)
-            return
-        if msg.field == TickType.BID:
-            if msg.price >= 0.0:        # IB sometimes returns -1
-                acc.add('bid', msg.price)
-        elif msg.field == TickType.ASK:
-            if msg.price >= 0.0:        # IB sometimes returns -1
-                acc.add('ask', msg.price)
-        elif msg.field == TickType.LAST:
-            pass    # RTVOLUME is faster, more accurate, and doesn't have dupes.
-            # acc.add('last', msg.price)
-
-        self._call_tick_handlers(msg.tickerId, acc.peek())
-
-    def _tickString(self, msg):
-        """Called for real-time volume ticks and last trade times."""
-        acc = self._ticumulators.get(msg.tickerId)
-        if acc is None:
-            self.log.warning('No Ticumulator found for ticker id %d', msg.tickerId)
-            return
-
-        if msg.tickType == TickType.LAST_TIMESTAMP:
-            pass # RTVOLUME is faster, more accurate, and doesn't have dupes.
+        import time
+        lastprice = float(msg.price)
+        lastsize  = float(msg.size)
+        #lasttime  = time.mktime(time.strptime(msg.time, '%Y-%m-%d %H:%M:%S'))
+        #if msg.tickType == TickType.LAST_TIMESTAMP:
+        #    pass # RTVOLUME is faster, more accurate, and doesn't have dupes.
             # acc.add('lasttime', int(msg.value))
         elif msg.tickType == TickType.RT_VOLUME:    # or msg.tickType == self.TICK_TYPE_RT_TRADE_VOLUME:       # RT Trade Volume still in beta I guess
             # semicolon-separated string of:
@@ -930,186 +1031,231 @@ class GBroke(gdax.WebsocketClient):
         else:       # Unknown tickType
             return
 
-        self._call_tick_handlers(msg.tickerId, acc.peek())
-
-    def _tickGeneric(self, msg):
-        """Called for trading halts."""
-        if msg.tickType == TickType.HALTED:
-            if msg.value == 0:
-                self._call_alert_handlers('Unhalt', msg.tickerId)
-            else:
-                self._call_alert_handlers('Halt', msg.tickerId)  # TODO: Alert enum or something
-
-    def _nextValidId(self, msg):
-        """Sets next valid order ID."""
-        self.connected = True
-        if msg.orderId >= self.__next_order_id:
-            self.__next_order_id = msg.orderId
-        else:
-            self.log.warning('nextValidId {} less than current id {}'.format(msg.orderId, self.__next_order_id))
-
-    def _contractDetails(self, msg):
-        """Callback for reqContractDetails.  Called multiple times with all possible matches for one request,
-        followed by a contractDetailsEnd.  We put the responses in to a dict of Queues indexed by request id (self._contract_details[req_id]),
-        followed by None to indicate the end."""
-        self.log.debug('DETAILS %d ID %d %s', msg.reqId, msg.contractDetails.m_summary.m_conId, obj2dict(msg.contractDetails))
-        if msg.reqId >= len(self._contract_details):
-            self.log.error('Could not find contract details slot %d for %s', msg.reqId, obj2dict(msg.contractDetails))
-        else:
-            self._contract_details[msg.reqId].put_nowait(msg.contractDetails)
-
-    def _contractDetailsEnd(self, msg):
-        """Called after all contractDetails messages for a given request have been sent.  Stuffs None into the Queue
-        for the request ID to indicate the end."""
-        self.log.debug('DETAILS END %s', msg)
-        if msg.reqId >= len(self._contract_details):
-            self.log.error('Could not find contract details slot %d for %s', msg.reqId, obj2dict(msg.contractDetails))
-        else:
-            self._contract_details[msg.reqId].put_nowait(None)
-
-    def _orderStatus(self, msg):
-        """Called with changes in order status.
-
-        Except:
-        "Typically there are duplicate orderStatus messages with the same information..."
-        "There are not guaranteed to be orderStatus callbacks for every change in order status."
-
-        orderId, status, filled, remaining, avgFillPrice, permId, parentId, lastFillPrice
-        """
-        order = self._orders.get(msg.orderId)
-        if not order:
-            self.log.error('Got orderStatus for unknown orderId {}'.format(msg.orderId))
-            return
-
-        # TODO: Worth making these immutable and replacing them?  Or *really* immutable and appending to a list of them?
-        if order.open_time is None:
-            order.open_time = time.time()
-        if msg.status in ('ApiCanceled', 'Cancelled'):       # Inactive can mean error or not.  And yes, they appear to spell cancelled differently.
-            if not order.cancelled:     # Only log the first time (can be dupes)
-                self.log.info('CANCELLED %s', order)
-            order.cancelled = True
-            order.open = False
-        elif msg.filled > abs(order.filled):      # Suppress duplicate / out-of-order fills  (order.filled is negative for sells)
-            order.filled = int(math.copysign(msg.filled, order.quantity))
-            order.avg_price = msg.avgFillPrice
-            if order.filled == order.quantity:
-                order.open = False
-            self._call_order_handlers(order)
-
-    def _openOrder(self, msg):
-        """Called when orders are submitted and completed.
-
-        Fields:
-        orderId
-        contract
-        order: m_action, m_orderType, m_totalQuantity, m_clientId, m_tif, m_auxPrice, m_lmtPrice, ...
-        orderState: m_status, m_commission, m_warningText, ...
-        """
-        self.log.debug('STATE %d %s', msg.orderId, obj2dict(msg.orderState))
-        order = self._orders.get(msg.orderId)
-        if not order:
-            self.log.info('EXOGENOUS ORDER #%d for %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
-            instrument = self._instruments.get(msg.contract.m_conId)
-            if instrument is None:
-                self.log.error('Open order #%d for unknown instrument %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
-                return
-            else:
-                order = self._orders[msg.orderId] = Order._from_ib(msg.order, msg.orderId, instrument)
-
-        assert order.id == msg.orderId
-        assert order.instrument._contract.m_symbol == msg.contract.m_symbol     # TODO: More thorough equality
-        if order.open_time is None:
-            order.open_time = time.time()
-        # possible status: Submitted Cancelled Filled Inactive
-        if msg.orderState.m_status == 'Cancelled':
-            order.cancelled = True
-            order.open = False
-        elif msg.orderState.m_status == 'Filled':       # Filled means completely filled
-            if order.open:      # Only log first of dupe msgs
-                self.log.info('COMPLETE %s avg price %f', order, order.avg_price)
-            order.open = False
-
-        if msg.orderState.m_warningText:
-            warnText = msg.orderState.m_warningText.replace('\n', ' ')
-            self.log.warning('Order %d: %s', msg.orderId, warnText)
-            order.message = warnText
-
-    def _openOrderEnd(self, msg):
-        """Called after reqOpenOrders or reqAllOpenOrders to indicate all open orders have been sent."""
-        self._reconcile_open_orders_end.set()
-
-    def _execDetails(self, msg):
-        """Called on order executions."""
-        order = self._orders.get(msg.execution.m_orderId)
-        if not order:
-            self.log.error('Got execDetails for unknown orderId {}'.format(msg.execution.m_orderId))
-            return
-        exec = msg.execution
-        # TODO: 5 digits of precision on price for forex
-        self.log.info('EXEC %(symbol)s %(qty)d @ %(price).2f (%(total_qty)d filled) order %(id)d pos %(pos)d' % dict(time=exec.m_time, id=order.id, symbol=order.instrument.symbol, qty=int(math.copysign(exec.m_shares, order.quantity)), price=exec.m_price, total_qty=int(math.copysign(exec.m_cumQty, order.quantity)), pos=self.get_position(order.instrument)))
-        assert order.id == exec.m_orderId
-        if order.open_time is None:
-            order.open_time = time.time()
-        self._executions[exec.m_execId] = order.id      # Track which order executions belong to, since commissions are per-exec
-        if exec.m_cumQty > abs(order.filled):           # Suppress duplicate / late fills.  Remember, kids: sells are negative!
-            # TODO: Save server time delta
-            order.fill_time = time.time()
-            order.filled = int(math.copysign(exec.m_cumQty, order.quantity))
-            order.avg_price = exec.m_avgPrice
-            if order.filled == order.quantity:
-                order.open = False
-            # Call order handlers in commissionReport() instead of here so we can include commission info.
-
-    def _position(self, msg):
-        """Called when positions change; gives new position.
-
-        If the instrument is unknown (not in self.instruments[]), we assume it's from a reconcile() call,
-        make a contract details request, and stuff the request ID in _reconcile_contract_requests.
-        """
-        inst_id = self._instrument_id_from_contract(msg.contract)
-        self.log.debug('POS %d %s %s', msg.pos, inst_id, obj2dict(msg.contract))
-        # So: it's possible we don't have this Instrument in self._instruments, since the account may have had open positions before we started.
-        # However, we can't wait for the look up (contractDetails) here because it causes a deadlock in IBPy (this method is an IBPy callback, so no other callbacks will fire until it returns).
-        # So, we put the reqContractDetails request ID in a Queue, then wait (for all the contractDetailsEnds) in reconcile() and create the Instruments there.
-        if inst_id not in self._instruments:
-            self.log.debug('POS INST ID %d not found: %s', inst_id, self._instruments.keys())
-            self._reconcile_contract_requests.put_nowait(self._request_contract_details(msg.contract))
-        try:
-            multiplier = float(msg.contract.m_multiplier)
-        except (ValueError, TypeError):
-            # We don't warn because this is called all the time.
-            multiplier = 1.0
-
-        self._positions[inst_id] = (msg.pos, msg.avgCost / multiplier)
-
-    def _positionEnd(self, msg):
-        """Called when all positions have been sent after a call to reqPositions; signals `reconcile()` the positions have been received."""
-        self.log.debug('POSITION END')
-        self._reconcile_contract_requests.put_nowait(None)       # Signal reconcile() we got all positions
-
-    def _commissionReport(self, msg):
-        """Called after executions; gives commission charge and PNL.  Calls order handlers."""
-        # In theory we might be able to use orderState instead of commissionReport, but...
-        # It's kinda whack.  Sometime's it's giant numbers, and there are dupes so it's hard to use.
-        # TODO: We might want to guard against duplicate commissionReport messages.  Not sure if they happen or not.  But since we do accounting here...
-        report = msg.commissionReport
-        self.log.debug('COMM %s', vars(report))
-        order = self._orders.get(self._executions.get(report.m_execId))
-        if order:
-            if 0 <= report.m_commission < CRAZY_HIGH_COMMISSION:        # We sometimes get bogus placeholder values
-                order.commission += report.m_commission
-            if -CRAZY_HIGH_PROFIT < report.m_realizedPNL < CRAZY_HIGH_PROFIT:
-                order.profit += report.m_realizedPNL
-            # TODO: We're potentially calling handlers more than once, here and in orderStatus
-            # TODO: register() flag to say only fire on_order() events on totally filled, or cancel/error.
-            self._call_order_handlers(order)
-        else:
-            self.log.error('No order found for execution {}'.format(report.m_execId))
-
-    def _connectionClosed(self, msg):
-        """Called when TWS straight drops yo shizzle."""
-        self.connected = False
-        self._call_alert_handlers('Connection Closed')
+    # def _tickPrice(self, msg):
+    #     """Called when market data tick prices change."""
+    #     acc = self._ticumulators.get(msg.tickerId)
+    #     if acc is None:
+    #         self.log.warning('No Ticumulator found for ticker id %d', msg.tickerId)
+    #         return
+    #     if msg.field == TickType.BID:
+    #         if msg.price >= 0.0:        # IB sometimes returns -1
+    #             acc.add('bid', msg.price)
+    #     elif msg.field == TickType.ASK:
+    #         if msg.price >= 0.0:        # IB sometimes returns -1
+    #             acc.add('ask', msg.price)
+    #     elif msg.field == TickType.LAST:
+    #         pass    # RTVOLUME is faster, more accurate, and doesn't have dupes.
+    #         # acc.add('last', msg.price)
+    #
+    #     self._call_tick_handlers(msg.tickerId, acc.peek())
+    #
+    # def _tickString(self, msg):
+    #     """Called for real-time volume ticks and last trade times."""
+    #     acc = self._ticumulators.get(msg.tickerId)
+    #     if acc is None:
+    #         self.log.warning('No Ticumulator found for ticker id %d', msg.tickerId)
+    #         return
+    #
+    #     if msg.tickType == TickType.LAST_TIMESTAMP:
+    #         pass # RTVOLUME is faster, more accurate, and doesn't have dupes.
+    #         # acc.add('lasttime', int(msg.value))
+    #     elif msg.tickType == TickType.RT_VOLUME:    # or msg.tickType == self.TICK_TYPE_RT_TRADE_VOLUME:       # RT Trade Volume still in beta I guess
+    #         # semicolon-separated string of:
+    #         # last trade price ; last trade size ; last trade time in epoch ms; total volume for the day (in lots (of 100 for stocks)) ; VWAP for the day ; single trade flag (True indicates the trade was filled by a single market maker; False indicates multiple market-makers helped fill the trade)
+    #         vals = msg.value.split(';')
+    #         if vals[0]:     # Sometimes price is the empty string (odd lots?); in this case size == 0 and volume doesn't change, so we skip it.  (I think this is what RT Trade Volume is supposed to fix?)
+    #             try:
+    #                 lastprice, lastsize, lasttime, volume, vwap = map(float, vals[:5])
+    #             except ValueError as err:
+    #                 self.log.warning("Error parsing RTVOLUME tickString '%s': %s", msg.value, str(err))
+    #                 return
+    #             acc.add('last', lastprice)
+    #             acc.add('lastsize', lastsize)       # Ticumulator likes lastsize to come after last
+    #             acc.add('lasttime', lasttime / 1000)
+    #             acc.add('volume', volume)
+    #     else:       # Unknown tickType
+    #         return
+    #
+    #     self._call_tick_handlers(msg.tickerId, acc.peek())
+    #
+    # def _tickGeneric(self, msg):
+    #     """Called for trading halts."""
+    #     if msg.tickType == TickType.HALTED:
+    #         if msg.value == 0:
+    #             self._call_alert_handlers('Unhalt', msg.tickerId)
+    #         else:
+    #             self._call_alert_handlers('Halt', msg.tickerId)  # TODO: Alert enum or something
+    #
+    # def _nextValidId(self, msg):
+    #     """Sets next valid order ID."""
+    #     self.connected = True
+    #     if msg.orderId >= self.__next_order_id:
+    #         self.__next_order_id = msg.orderId
+    #     else:
+    #         self.log.warning('nextValidId {} less than current id {}'.format(msg.orderId, self.__next_order_id))
+    #
+    # def _contractDetails(self, msg):
+    #     """Callback for reqContractDetails.  Called multiple times with all possible matches for one request,
+    #     followed by a contractDetailsEnd.  We put the responses in to a dict of Queues indexed by request id (self._contract_details[req_id]),
+    #     followed by None to indicate the end."""
+    #     self.log.debug('DETAILS %d ID %d %s', msg.reqId, msg.contractDetails.m_summary.m_conId, obj2dict(msg.contractDetails))
+    #     if msg.reqId >= len(self._contract_details):
+    #         self.log.error('Could not find contract details slot %d for %s', msg.reqId, obj2dict(msg.contractDetails))
+    #     else:
+    #         self._contract_details[msg.reqId].put_nowait(msg.contractDetails)
+    #
+    # def _contractDetailsEnd(self, msg):
+    #     """Called after all contractDetails messages for a given request have been sent.  Stuffs None into the Queue
+    #     for the request ID to indicate the end."""
+    #     self.log.debug('DETAILS END %s', msg)
+    #     if msg.reqId >= len(self._contract_details):
+    #         self.log.error('Could not find contract details slot %d for %s', msg.reqId, obj2dict(msg.contractDetails))
+    #     else:
+    #         self._contract_details[msg.reqId].put_nowait(None)
+    #
+    # def _orderStatus(self, msg):
+    #     """Called with changes in order status.
+    #
+    #     Except:
+    #     "Typically there are duplicate orderStatus messages with the same information..."
+    #     "There are not guaranteed to be orderStatus callbacks for every change in order status."
+    #
+    #     orderId, status, filled, remaining, avgFillPrice, permId, parentId, lastFillPrice
+    #     """
+    #     order = self._orders.get(msg.orderId)
+    #     if not order:
+    #         self.log.error('Got orderStatus for unknown orderId {}'.format(msg.orderId))
+    #         return
+    #
+    #     # TODO: Worth making these immutable and replacing them?  Or *really* immutable and appending to a list of them?
+    #     if order.open_time is None:
+    #         order.open_time = time.time()
+    #     if msg.status in ('ApiCanceled', 'Cancelled'):       # Inactive can mean error or not.  And yes, they appear to spell cancelled differently.
+    #         if not order.cancelled:     # Only log the first time (can be dupes)
+    #             self.log.info('CANCELLED %s', order)
+    #         order.cancelled = True
+    #         order.open = False
+    #     elif msg.filled > abs(order.filled):      # Suppress duplicate / out-of-order fills  (order.filled is negative for sells)
+    #         order.filled = int(math.copysign(msg.filled, order.quantity))
+    #         order.avg_price = msg.avgFillPrice
+    #         if order.filled == order.quantity:
+    #             order.open = False
+    #         self._call_order_handlers(order)
+    #
+    # def _openOrder(self, msg):
+    #     """Called when orders are submitted and completed.
+    #
+    #     Fields:
+    #     orderId
+    #     contract
+    #     order: m_action, m_orderType, m_totalQuantity, m_clientId, m_tif, m_auxPrice, m_lmtPrice, ...
+    #     orderState: m_status, m_commission, m_warningText, ...
+    #     """
+    #     self.log.debug('STATE %d %s', msg.orderId, obj2dict(msg.orderState))
+    #     order = self._orders.get(msg.orderId)
+    #     if not order:
+    #         self.log.info('EXOGENOUS ORDER #%d for %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
+    #         instrument = self._instruments.get(msg.contract.m_conId)
+    #         if instrument is None:
+    #             self.log.error('Open order #%d for unknown instrument %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
+    #             return
+    #         else:
+    #             order = self._orders[msg.orderId] = Order._from_ib(msg.order, msg.orderId, instrument)
+    #
+    #     assert order.id == msg.orderId
+    #     assert order.instrument._contract.m_symbol == msg.contract.m_symbol     # TODO: More thorough equality
+    #     if order.open_time is None:
+    #         order.open_time = time.time()
+    #     # possible status: Submitted Cancelled Filled Inactive
+    #     if msg.orderState.m_status == 'Cancelled':
+    #         order.cancelled = True
+    #         order.open = False
+    #     elif msg.orderState.m_status == 'Filled':       # Filled means completely filled
+    #         if order.open:      # Only log first of dupe msgs
+    #             self.log.info('COMPLETE %s avg price %f', order, order.avg_price)
+    #         order.open = False
+    #
+    #     if msg.orderState.m_warningText:
+    #         warnText = msg.orderState.m_warningText.replace('\n', ' ')
+    #         self.log.warning('Order %d: %s', msg.orderId, warnText)
+    #         order.message = warnText
+    #
+    # def _openOrderEnd(self, msg):
+    #     """Called after reqOpenOrders or reqAllOpenOrders to indicate all open orders have been sent."""
+    #     self._reconcile_open_orders_end.set()
+    #
+    # def _execDetails(self, msg):
+    #     """Called on order executions."""
+    #     order = self._orders.get(msg.execution.m_orderId)
+    #     if not order:
+    #         self.log.error('Got execDetails for unknown orderId {}'.format(msg.execution.m_orderId))
+    #         return
+    #     exec = msg.execution
+    #     # TODO: 5 digits of precision on price for forex
+    #     self.log.info('EXEC %(symbol)s %(qty)d @ %(price).2f (%(total_qty)d filled) order %(id)d pos %(pos)d' % dict(time=exec.m_time, id=order.id, symbol=order.instrument.symbol, qty=int(math.copysign(exec.m_shares, order.quantity)), price=exec.m_price, total_qty=int(math.copysign(exec.m_cumQty, order.quantity)), pos=self.get_position(order.instrument)))
+    #     assert order.id == exec.m_orderId
+    #     if order.open_time is None:
+    #         order.open_time = time.time()
+    #     self._executions[exec.m_execId] = order.id      # Track which order executions belong to, since commissions are per-exec
+    #     if exec.m_cumQty > abs(order.filled):           # Suppress duplicate / late fills.  Remember, kids: sells are negative!
+    #         # TODO: Save server time delta
+    #         order.fill_time = time.time()
+    #         order.filled = int(math.copysign(exec.m_cumQty, order.quantity))
+    #         order.avg_price = exec.m_avgPrice
+    #         if order.filled == order.quantity:
+    #             order.open = False
+    #         # Call order handlers in commissionReport() instead of here so we can include commission info.
+    #
+    # def _position(self, msg):
+    #     """Called when positions change; gives new position.
+    #
+    #     If the instrument is unknown (not in self.instruments[]), we assume it's from a reconcile() call,
+    #     make a contract details request, and stuff the request ID in _reconcile_contract_requests.
+    #     """
+    #     inst_id = self._instrument_id_from_contract(msg.contract)
+    #     self.log.debug('POS %d %s %s', msg.pos, inst_id, obj2dict(msg.contract))
+    #     # So: it's possible we don't have this Instrument in self._instruments, since the account may have had open positions before we started.
+    #     # However, we can't wait for the look up (contractDetails) here because it causes a deadlock in IBPy (this method is an IBPy callback, so no other callbacks will fire until it returns).
+    #     # So, we put the reqContractDetails request ID in a Queue, then wait (for all the contractDetailsEnds) in reconcile() and create the Instruments there.
+    #     if inst_id not in self._instruments:
+    #         self.log.debug('POS INST ID %d not found: %s', inst_id, self._instruments.keys())
+    #         self._reconcile_contract_requests.put_nowait(self._request_contract_details(msg.contract))
+    #     try:
+    #         multiplier = float(msg.contract.m_multiplier)
+    #     except (ValueError, TypeError):
+    #         # We don't warn because this is called all the time.
+    #         multiplier = 1.0
+    #
+    #     self._positions[inst_id] = (msg.pos, msg.avgCost / multiplier)
+    #
+    # def _positionEnd(self, msg):
+    #     """Called when all positions have been sent after a call to reqPositions; signals `reconcile()` the positions have been received."""
+    #     self.log.debug('POSITION END')
+    #     self._reconcile_contract_requests.put_nowait(None)       # Signal reconcile() we got all positions
+    #
+    # def _commissionReport(self, msg):
+    #     """Called after executions; gives commission charge and PNL.  Calls order handlers."""
+    #     # In theory we might be able to use orderState instead of commissionReport, but...
+    #     # It's kinda whack.  Sometime's it's giant numbers, and there are dupes so it's hard to use.
+    #     # TODO: We might want to guard against duplicate commissionReport messages.  Not sure if they happen or not.  But since we do accounting here...
+    #     report = msg.commissionReport
+    #     self.log.debug('COMM %s', vars(report))
+    #     order = self._orders.get(self._executions.get(report.m_execId))
+    #     if order:
+    #         if 0 <= report.m_commission < CRAZY_HIGH_COMMISSION:        # We sometimes get bogus placeholder values
+    #             order.commission += report.m_commission
+    #         if -CRAZY_HIGH_PROFIT < report.m_realizedPNL < CRAZY_HIGH_PROFIT:
+    #             order.profit += report.m_realizedPNL
+    #         # TODO: We're potentially calling handlers more than once, here and in orderStatus
+    #         # TODO: register() flag to say only fire on_order() events on totally filled, or cancel/error.
+    #         self._call_order_handlers(order)
+    #     else:
+    #         self.log.error('No order found for execution {}'.format(report.m_execId))
+    #
+    # def _connectionClosed(self, msg):
+    #     """Called when TWS straight drops yo shizzle."""
+    #     self.connected = False
+    #     self._call_alert_handlers('Connection Closed')
 
     def _defaultHandler(self, msg):
         """Called when there is no other message handler for `msg`."""

@@ -24,7 +24,7 @@ def find_version(*file_paths):
     raise RuntimeError("Unable to find version string.")
 
 setup(
-    name='IBroke',
+    name='GBroke',
     version=find_version('gbroke.py'),
     description='Interactive Brokers for Humans',
     long_description=long_description,
@@ -40,7 +40,7 @@ setup(
         'Programming Language :: Python :: 3.5',
     ],
     keywords='interactive brokers tws api finance trading',
-    py_modules=['ibroke'],
+    py_modules=['gbroke'],
     install_requires=['pytz', 'gdax'],
     extras_require={'dev': ['pypandoc'],},
     package_data={},

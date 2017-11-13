@@ -1002,34 +1002,38 @@ class GBroke(gdax.WebsocketClient):
     def _down(self, msg):
         pass
 
+
     def _match(self, msg):
         acc = self._ticumulators.get(msg.product_id)
         if acc is None:
             self.log.warning('No Ticumulator found for ticker id %d', msg.tickerId)
             return
+        import ciso8601
         import time
         lastprice = float(msg.price)
         lastsize  = float(msg.size)
-        #lasttime  = time.mktime(time.strptime(msg.time, '%Y-%m-%d %H:%M:%S'))
+        _lasttime  = ciso8601.parse_datetime(msg.time)
+        lasttime = time.mktime(_lasttime.timetuple())
+        print(lastprice,lastsize,_lasttime,lasttime)
         #if msg.tickType == TickType.LAST_TIMESTAMP:
         #    pass # RTVOLUME is faster, more accurate, and doesn't have dupes.
             # acc.add('lasttime', int(msg.value))
-        elif msg.tickType == TickType.RT_VOLUME:    # or msg.tickType == self.TICK_TYPE_RT_TRADE_VOLUME:       # RT Trade Volume still in beta I guess
-            # semicolon-separated string of:
-            # last trade price ; last trade size ; last trade time in epoch ms; total volume for the day (in lots (of 100 for stocks)) ; VWAP for the day ; single trade flag (True indicates the trade was filled by a single market maker; False indicates multiple market-makers helped fill the trade)
-            vals = msg.value.split(';')
-            if vals[0]:     # Sometimes price is the empty string (odd lots?); in this case size == 0 and volume doesn't change, so we skip it.  (I think this is what RT Trade Volume is supposed to fix?)
-                try:
-                    lastprice, lastsize, lasttime, volume, vwap = map(float, vals[:5])
-                except ValueError as err:
-                    self.log.warning("Error parsing RTVOLUME tickString '%s': %s", msg.value, str(err))
-                    return
-                acc.add('last', lastprice)
-                acc.add('lastsize', lastsize)       # Ticumulator likes lastsize to come after last
-                acc.add('lasttime', lasttime / 1000)
-                acc.add('volume', volume)
-        else:       # Unknown tickType
-            return
+        # elif msg.tickType == TickType.RT_VOLUME:    # or msg.tickType == self.TICK_TYPE_RT_TRADE_VOLUME:       # RT Trade Volume still in beta I guess
+        #     # semicolon-separated string of:
+        #     # last trade price ; last trade size ; last trade time in epoch ms; total volume for the day (in lots (of 100 for stocks)) ; VWAP for the day ; single trade flag (True indicates the trade was filled by a single market maker; False indicates multiple market-makers helped fill the trade)
+        #     vals = msg.value.split(';')
+        #     if vals[0]:     # Sometimes price is the empty string (odd lots?); in this case size == 0 and volume doesn't change, so we skip it.  (I think this is what RT Trade Volume is supposed to fix?)
+        #         try:
+        #             lastprice, lastsize, lasttime, volume, vwap = map(float, vals[:5])
+        #         except ValueError as err:
+        #             self.log.warning("Error parsing RTVOLUME tickString '%s': %s", msg.value, str(err))
+        #             return
+        #         acc.add('last', lastprice)
+        #         acc.add('lastsize', lastsize)       # Ticumulator likes lastsize to come after last
+        #         acc.add('lasttime', lasttime / 1000)
+        #         acc.add('volume', volume)
+        # else:       # Unknown tickType
+        return
 
     # def _tickPrice(self, msg):
     #     """Called when market data tick prices change."""

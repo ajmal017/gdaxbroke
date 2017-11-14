@@ -114,6 +114,18 @@ class Contract():
         self.m_strike = 0
         self.m_includeExpired = False
 
+class GOrder(object):
+    """ generated source for class Order """
+    #  main order fields
+    m_orderId = 0
+    m_clientId = 0
+    m_permId = 0
+    m_action = ""
+    m_totalQuantity = 0
+    m_orderType = ""
+    m_lmtPrice = float()
+    m_auxPrice = float()
+
 
 class Instrument:
     """Represents a stock, bond, future, forex currency pair, or option.
@@ -271,7 +283,7 @@ class Order:
         return self.filled == self.quantity
 
     @staticmethod
-    def _from_ib(order, order_id, instrument):
+    def _from_gb(order, order_id, instrument):
         """:Return: A new ibroke.Order object created from a :class:`ib.ext.Order.Order`."""
         qty = order.m_totalQuantity * (1 if order.m_action == 'BUY' else -1)
         return Order(order_id, instrument, price=order.m_lmtPrice or None, quantity=order.m_totalQuantity, filled=0, open=True, cancelled=False)
@@ -388,42 +400,13 @@ class GBroke(gdax.WebsocketClient):
             raise RuntimeError('Error connecting to IB')
         print("You has connected sandbox gdx ")
         #############################################################################
-
-        #self._conn = ibConnection(host, port, client_id)
-        #self._conn = gdax.WebsocketClient(url=host,products=products) #product 哪里给定？
-        #self._conn.registerAll(self._handle_message)
-        #self._conn.connect()
-        #self._conn.start()
-        # The idea here is to catch errors synchronously, so if you can't connect, you know it at IBroke()
         start = time.time()
-        #while not self.connected:           # None initially meaning never connected; set False by _error(); set True by managedAccounts and nextValidId
-        #    if self.connected is False or time.time() - start > timeout_sec:
-        #        raise RuntimeError('Error connecting to IB')
-        #    else:
-        #        time.sleep(0.1)
         self.log.info('IBroke %s ,client ID %d', __version__, client_id)
         #self._conn.reqAccountSummary(0, 'All', 'AccountType')       # TODO: Wait, show value, verify
         time.sleep(0.25)
-        #self.reconcile()
+        #self.reconcile() #TODO
         #self.log_positions()
         #self.log_open_orders()
-
-    # class WSClient(gdax.WebsocketClient):
-    #     def on_open(self):
-    #         self.message_count = 0
-    #         print("Let's count the messages!")
-    #
-    #     def on_message(self, msg):
-    #         print("-------------------------------------------------------------------------------")
-    #         #print(json.dumps(msg, indent=4, sort_keys=True))
-    #         self.message_count += 1
-    #         self.connected = True #TODO
-    #         self._handle_message(msg)
-    #
-    #     def on_close(self):
-    #         print("-- Goodbye! --")
-    #         self.connected = False #TODO
-
 
     def get_instrument(self, symbol: Union[str, ContractTuple, int, Instrument], sec_type: str = 'STK', exchange: str = 'SMART', currency: str = 'USD', expiry: Optional[str] = None, strike: float = 0.0, opt_type: Optional[str] = None) -> Instrument:
         """Return an :class:`Instrument` object defining what will be purchased, at which exchange and in which currency.
@@ -462,7 +445,6 @@ class GBroke(gdax.WebsocketClient):
         #req_id = self._request_contract_details(contract)
         #inst = self._handle_contract_details(req_id)
         #earliest, latest = inst._trading_hours[0][0], inst._trading_hours[-1][1]
-
         #self.log.debug('%s HOURS : %s -- %s  (%.0f h)', inst, earliest, latest, (latest - earliest).total_seconds() / 3600)
 
         #self.auth_client.buy(price='100.00',  # USD
@@ -473,36 +455,34 @@ class GBroke(gdax.WebsocketClient):
         self._instruments[inst.id] = inst
         self._positions.setdefault(inst.id, (0, None))  # ib.reqPositions() (called in reconcile()) only gives 0 positions for instruments traded recently, so we
         return inst
-
-    def _request_contract_details(self, contract):
-        """Call reqContractDetails and stuff the results in ``self._contract_details[req_id]``, where `req_id` is the return value."""
-        req_id = len(self._contract_details)  # TODO: race condition between getting length and extending
-        self.log.debug('REQ CON DET %d ID %d', req_id, contract.m_conId)
-        self._contract_details.append(Queue())  # Filled by _contractDetails(), capped off with None by _contractDetailsEnd()
-        self._conn.reqContractDetails(req_id, contract)
-        return req_id
-
-    def _handle_contract_details(self, req_id):
-        """Wait on `contractDetails` and `endContractDetails` for the given `req_id`.
-
-        Creates a new Instrument and puts it in self._instruments.
-
-        :raises ValueError: If waiting timed out or there was an exception otherwise.
-        :return: Instrument created from the best-matching contract.
-        """
-        # Wait on all ContractDetails objects to fill in the queue, toss the terminating None, put into a tuple.
-        details = tuple(takewhile(lambda v: v is not None, iter_except(lambda: self._contract_details[req_id].get(timeout=self.timeout_sec), Empty)))
-        if not details:
-            raise ValueError("Timed out looking for matching contracts for request ID".format(req_id))
-        elif isinstance(details[0], Exception):  # Error
-            raise details[0]
-        best = choose_best_contract(details)
-        self.log.debug('BEST %s', obj2dict(best.m_summary))
-        inst = Instrument(self, best)
-        self._instruments[inst.id] = inst
-        self._positions.setdefault(inst.id, (0, None))  # ib.reqPositions() (called in reconcile()) only gives 0 positions for instruments traded recently, so we set our own
-        return inst
-
+    # def _request_contract_details(self, contract):
+    #     """Call reqContractDetails and stuff the results in ``self._contract_details[req_id]``, where `req_id` is the return value."""
+    #     req_id = len(self._contract_details)  # TODO: race condition between getting length and extending
+    #     self.log.debug('REQ CON DET %d ID %d', req_id, contract.m_conId)
+    #     self._contract_details.append(Queue())  # Filled by _contractDetails(), capped off with None by _contractDetailsEnd()
+    #     self._conn.reqContractDetails(req_id, contract)
+    #     return req_id
+    #
+    # def _handle_contract_details(self, req_id):
+    #     """Wait on `contractDetails` and `endContractDetails` for the given `req_id`.
+    #
+    #     Creates a new Instrument and puts it in self._instruments.
+    #
+    #     :raises ValueError: If waiting timed out or there was an exception otherwise.
+    #     :return: Instrument created from the best-matching contract.
+    #     """
+    #     # Wait on all ContractDetails objects to fill in the queue, toss the terminating None, put into a tuple.
+    #     details = tuple(takewhile(lambda v: v is not None, iter_except(lambda: self._contract_details[req_id].get(timeout=self.timeout_sec), Empty)))
+    #     if not details:
+    #         raise ValueError("Timed out looking for matching contracts for request ID".format(req_id))
+    #     elif isinstance(details[0], Exception):  # Error
+    #         raise details[0]
+    #     best = choose_best_contract(details)
+    #     self.log.debug('BEST %s', obj2dict(best.m_summary))
+    #     inst = Instrument(self, best)
+    #     self._instruments[inst.id] = inst
+    #     self._positions.setdefault(inst.id, (0, None))  # ib.reqPositions() (called in reconcile()) only gives 0 positions for instruments traded recently, so we set our own
+    #     return inst
     def register(self, instrument: Union[str, ContractTuple, int, Instrument], on_bar: Callable[[Instrument, Bar], None] = None, on_order: Callable[[Order], None] = None, on_alert: Callable[[Instrument, str], None] = None, bar_type: str = 'time', bar_size: float = 1.0) -> None:
         """Register bar, order, and alert handlers for an `instrument`.
 
@@ -521,18 +501,15 @@ class GBroke(gdax.WebsocketClient):
 
             #def initialize(self,gbroke):
             #    self.broke = gbroke
-
             def on_open(self):
                 self.message_count = 0
                 print("Let's count the messages!")
 
             def on_message(self, msg):
-                print("-------------------------------------------------------------------------------")
                 # print(json.dumps(msg, indent=4, sort_keys=True))
                 self.message_count += 1
                 self.context.connected = True  # TODO
                 self.context._handle_message(msg)
-
             def on_close(self):
                 print("-- Goodbye! --")
                 self.context.connected = False  # TODO
@@ -576,7 +553,6 @@ class GBroke(gdax.WebsocketClient):
                     pass
                 assert len(self._tick_handlers[instrument.id]) == 1, 'Found more than initial tick handler on register {}: {}'.format(instrument.id, self._tick_handlers[instrument.id])
                 self._tick_handlers[instrument.id].pop()        # Remove initial handler
-
             if bar_type == 'tick':
                 self._tick_handlers[instrument.id].append(on_bar)
             elif bar_type == 'time':
@@ -584,124 +560,144 @@ class GBroke(gdax.WebsocketClient):
                     raise NotImplementedError("Can't handle multiple bar types / sizes yet (instrument {})".format(instrument))
                 self._bar_handlers[(bar_type, bar_size, instrument.id)].append(on_bar)
                 RecurringTask(lambda: self._call_bar_handlers(bar_type, bar_size, instrument.id), interval_sec=bar_size, init_sec=1, daemon=True)        # This apparently sticks around even without maintaining a reference...
-
             self.log.debug('REGISTER %d %s', instrument.id, instrument)
-
         if on_order:
             self._order_handlers[instrument.id].append(on_order)
         if on_alert:
             self._alert_hanlders[instrument.id].append(on_alert)
+        return instrument
 
-    # def order(self, instrument: Instrument, quantity: int, limit: float = 0.0, stop: float = 0.0, target: float = 0.0) -> Optional[Order]:
-    #     """Place an order and return an Order object, or None if no order was made.
+    def order(self, instrument: Instrument, quantity: int, limit: float = 0.0, stop: float = 0.0, target: float = 0.0) -> Optional[Order]:
+        """Place an order and return an Order object, or None if no order was made.
+
+        The returned object does not change (will not update).
+        """
+        if target:
+            raise NotImplementedError()
+        if quantity == 0:
+            return None
+        if not self.connected:
+            self.log.error('Cannot order when not connected')
+            return None
+
+        typemap = {
+            (False, False): 'market',
+            (False, True):  'limit',
+            (True, False):  'stop',
+            (True, True):   'STP LMT',#TODO
+        }
+
+        # TODO: Check stop limit values are consistent
+        #order = IBOrder()
+        order = GOrder() #TODO
+        order.m_action = 'BUY' if quantity >= 0 else 'SELL'
+        order.m_totalQuantity = abs(quantity)
+        order.m_orderType = typemap[(bool(stop), bool(limit))]
+        order.m_lmtPrice = limit
+        order.m_auxPrice = stop
+        #order.m_tif = 'DAY'     # Time in force: DAY, GTC, IOC, GTD
+        #order.m_allOrNone = False   # Fill or Kill
+        #order.m_goodTillDate = "" #  FORMAT: 20060505 08:00:00 {time zone}
+        #order.m_clientId = self._conn.clientId
+        order.m_orderId = order_id = self._next_order_id() #TODO
+
+        self.log.debug('ORDER %d: %s %s', order_id, obj2dict(instrument._contract), obj2dict(order))
+        self._orders[order_id] = Order._from_gb(order, order_id, instrument)
+        self.log.info('ORDER %s', self._orders[order_id])
+        #self._conn.placeOrder(order_id, instrument._contract, order)        # This needs to come after updating self._orders
+        print("order.m_action:",order.m_action,order.m_orderType,order.m_orderId,instrument.id)
+        if order.m_action == 'BUY':
+            res = self.auth_client.buy(client_oid = order.m_orderId,
+                                 type = order.m_orderType,
+                                 price=order.m_lmtPrice,  # USD  #TODO FOR STOP
+                                 size=order.m_totalQuantity,  # BTC
+                                 product_id=instrument.id)
+            print("res:",res) #TODO  https://api.coinbase.com/v2/time
+
+        elif order.m_action == 'SELL':
+            res = self.auth_client.sell(client_oid=order.m_orderId,
+                                 type=order.m_orderType,
+                                 price=order.m_lmtPrice,  # USD  #TODO FOR STOP
+                                 size=order.m_totalQuantity,  # BTC
+                                 product_id=instrument.id)
+            print(res)
+        else :
+            pass
+        return copy(self._orders[order_id])
     #
-    #     The returned object does not change (will not update).
-    #     """
-    #     if target:
-    #         raise NotImplementedError()
-    #     if quantity == 0:
-    #         return None
-    #     if not self.connected:
-    #         self.log.error('Cannot order when not connected')
-    #         return None
+    def order_target(self, instrument, quantity, limit=0.0, stop=0.0):
+        """Place orders as necessary to bring position in `instrument` to `quantity`.
+
+        Bracket orders (with `target`) don't really make sense here.
+        """
+        return self.order(instrument, quantity - self.get_position(instrument), limit=limit, stop=stop)
+
+    def get_position(self, instrument):
+        """:Return: the number of shares of `instrument` held (negative for short)."""
+        pos = self._positions.get(instrument.id)
+        if pos is None:
+            self.log.warning('get_position() for unknown instrument {}'.format(instrument))
+            return 0
+        return pos[0]
     #
-    #     typemap = {
-    #         (False, False): 'MKT',
-    #         (False, True):  'LMT',
-    #         (True, False):  'STP',
-    #         (True, True):   'STP LMT',
-    #     }
+    def get_positions(self):
+        """:Return: an iterator of ``(instrument, position, avg_cost)`` tuples for any non-zero positions in this account."""
+        for inst_id, (pos, avg_cost) in self._positions.items():
+            if pos:
+                yield (self._instruments.get(inst_id), pos, avg_cost)
+
+    def get_cost(self, instrument):
+        """:Return: the average cost of currently held shares of `instrument`.  If no shares held, return None."""
+        pos = self._positions.get(instrument.id)
+        if pos is None:
+            self.log.warning('get_cost() for unknown instrument {}'.format(instrument))
+            return None
+        return pos[1] or None
     #
-    #     # TODO: Check stop limit values are consistent
-    #     order = IBOrder()
-    #     order.m_action = 'BUY' if quantity >= 0 else 'SELL'
-    #     order.m_totalQuantity = abs(quantity)
-    #     order.m_orderType = typemap[(bool(stop), bool(limit))]
-    #     order.m_lmtPrice = limit
-    #     order.m_auxPrice = stop
-    #     order.m_tif = 'DAY'     # Time in force: DAY, GTC, IOC, GTD
-    #     order.m_allOrNone = False   # Fill or Kill
-    #     order.m_goodTillDate = "" #  FORMAT: 20060505 08:00:00 {time zone}
-    #     order.m_clientId = self._conn.clientId
-    #
-    #     order_id = self._next_order_id()
-    #     self.log.debug('ORDER %d: %s %s', order_id, obj2dict(instrument._contract), obj2dict(order))
-    #     self._orders[order_id] = Order._from_ib(order, order_id, instrument)
-    #     self.log.info('ORDER %s', self._orders[order_id])
-    #     self._conn.placeOrder(order_id, instrument._contract, order)        # This needs to come after updating self._orders
-    #     return copy(self._orders[order_id])
-    #
-    # def order_target(self, instrument, quantity, limit=0.0, stop=0.0):
-    #     """Place orders as necessary to bring position in `instrument` to `quantity`.
-    #
-    #     Bracket orders (with `target`) don't really make sense here.
-    #     """
-    #     return self.order(instrument, quantity - self.get_position(instrument), limit=limit, stop=stop)
-    #
-    # def get_position(self, instrument):
-    #     """:Return: the number of shares of `instrument` held (negative for short)."""
-    #     pos = self._positions.get(instrument.id)
-    #     if pos is None:
-    #         self.log.warning('get_position() for unknown instrument {}'.format(instrument))
-    #         return 0
-    #     return pos[0]
-    #
-    # def get_positions(self):
-    #     """:Return: an iterator of ``(instrument, position, avg_cost)`` tuples for any non-zero positions in this account."""
-    #     for inst_id, (pos, avg_cost) in self._positions.items():
-    #         if pos:
-    #             yield (self._instruments.get(inst_id), pos, avg_cost)
-    #
-    # def get_cost(self, instrument):
-    #     """:Return: the average cost of currently held shares of `instrument`.  If no shares held, return None."""
-    #     pos = self._positions.get(instrument.id)
-    #     if pos is None:
-    #         self.log.warning('get_cost() for unknown instrument {}'.format(instrument))
-    #         return None
-    #     return pos[1] or None
-    #
-    # def cancel(self, order):
-    #     """Cancel an `order`."""
-    #     self.log.info('CANCEL %s', order)
-    #     if not self.connected:
-    #         self.log.error('Cannot cancel order when disconnected')
-    #     else:
-    #         self._conn.cancelOrder(order.id)
-    #
-    # def cancel_all(self, instrument=None, hard_global_cancel=False):
-    #     """Cancel all open orders.  If given, only cancel orders for `instrument`.
-    #
-    #     :param bool hard_global_cancel: If True, issue a global cancel for ALL orders for this ENTIRE account,
-    #       including orders made by other API clients and the TWS GUI.
-    #     """
-    #     # TODO: We might want to request all open orders, since our order status tracking might not be perfect.
-    #     if hard_global_cancel:
-    #         if instrument is not None:
-    #             raise ValueError('instrument must be None for hard_global_cancel')
-    #         self.log.info('GLOBAL CANCEL')
-    #         self._conn.reqGlobalCancel()
-    #     else:
-    #         for order in self._orders.values():
-    #             if order.open and (instrument is None or order.instrument == instrument):
-    #                 self.cancel(order)
-    #
-    # def flatten(self, instrument=None, hard_global_cancel=False):
-    #     """Cancel all open orders and set position to 0 for all instruments, or only for `instrument` if given.
-    #
-    #     :param bool hard_global_cancel: If True, issue a global cancel for ALL orders for this ENTIRE account,
-    #       including orders made by other API clients and the TWS GUI.
-    #     """
-    #     self.cancel_all(instrument, hard_global_cancel=hard_global_cancel)
-    #     time.sleep(1)       # TODO: Maybe wait for everything to be cancelled.
-    #     for inst in ((instrument,) if instrument else self._instruments.values()):
-    #         self.order_target(inst, 0)
-    #
-    # def get_open_orders(self, instrument=None):
-    #     """:Return: an iterable of all open orders, or only those for `instrument` if given."""
-    #     for order in self._orders.values():
-    #         if order.open and (instrument is None or order.instrument == instrument):
-    #             yield copy(order)
-    #
+    def cancel(self, order):
+        """Cancel an `order`."""
+        self.log.info('CANCEL %s', order)
+        if not self.connected:
+            self.log.error('Cannot cancel order when disconnected')
+        else:
+            #self._conn.cancelOrder(order.id)
+            self.auth_client.cancel_order(order.id) #TODO id use gdax server id
+
+    def cancel_all(self, instrument=None, hard_global_cancel=False):
+        """Cancel all open orders.  If given, only cancel orders for `instrument`.
+
+        :param bool hard_global_cancel: If True, issue a global cancel for ALL orders for this ENTIRE account,
+          including orders made by other API clients and the TWS GUI.
+        """
+        # TODO: We might want to request all open orders, since our order status tracking might not be perfect.
+        if hard_global_cancel:
+            if instrument is not None:
+                raise ValueError('instrument must be None for hard_global_cancel')
+            self.log.info('GLOBAL CANCEL')
+            #self._conn.reqGlobalCancel()
+            self.auth_client.cancel_all(instrument.id)
+        else:
+            for order in self._orders.values():
+                if order.open and (instrument is None or order.instrument == instrument):
+                    self.cancel(order)
+
+    def flatten(self, instrument=None, hard_global_cancel=False):
+        """Cancel all open orders and set position to 0 for all instruments, or only for `instrument` if given.
+
+        :param bool hard_global_cancel: If True, issue a global cancel for ALL orders for this ENTIRE account,
+          including orders made by other API clients and the TWS GUI.
+        """
+        self.cancel_all(instrument, hard_global_cancel=hard_global_cancel)
+        time.sleep(1)       # TODO: Maybe wait for everything to be cancelled.
+        for inst in ((instrument,) if instrument else self._instruments.values()):
+            self.order_target(inst, 0)
+
+    def get_open_orders(self, instrument=None):
+        """:Return: an iterable of all open orders, or only those for `instrument` if given."""
+        for order in self._orders.values():
+            if order.open and (instrument is None or order.instrument == instrument):
+                yield copy(order)
+
     # def reconcile(self):
     #     """Refresh the local state of orders and positions with those from the server.
     #
@@ -827,10 +823,10 @@ class GBroke(gdax.WebsocketClient):
     #     self.connected = False
     #     self._conn.disconnect()
     #
-    # def _next_order_id(self):
-    #     """Increment the internal order id counter and return it."""
-    #     self.__next_order_id += 1
-    #     return self.__next_order_id
+    def _next_order_id(self):
+        """Increment the internal order id counter and return it."""
+        self.__next_order_id += 1
+        return self.__next_order_id
 
     def _call_order_handlers(self, order):
         """Call any order handlers registered for ``order.instrument``."""
@@ -865,7 +861,7 @@ class GBroke(gdax.WebsocketClient):
         instrument = self._instruments.get(ticker_id)
         acc = self._ticumulators.get(ticker_id)
         handlers = self._bar_handlers.get((bar_type, bar_size, ticker_id))
-        print(acc,instrument,handlers)
+        #print("#################################",acc,instrument,handlers)
         if acc is None or instrument is None or handlers is None:
             self.log.warning('No instrument, ticumulator, or handlers found for ID %d calling %s %f bar handlers', ticker_id, bar_type, bar_size)
         else:
@@ -879,14 +875,11 @@ class GBroke(gdax.WebsocketClient):
             raise ValueError('Invalid contract ID {} for contract {}'.format(contract.m_conId, obj2dict(contract)))
         return contract.m_conId
 
-
     ###########################################################################
     # Message Handlers
     ###########################################################################
-
     def _handle_message(self, msg):
         """Root message handler, dispatches to methods named `_typeName`.
-
         E.g., `tickString` messages are dispatched to `self._tickString()`.
         """
         if self.verbose >= 5:
@@ -895,19 +888,17 @@ class GBroke(gdax.WebsocketClient):
         #name = getattr(msg, 'typeName', None)
         #name = getattr(msg, 'type', None)
         name = msg["type"]
-        print("debug msg:",msg)
+        #print("debug msg:",msg)
 
         if not name or not name.isidentifier():
             self.log.error('Invalid message name %s', name)
             return
         handler = getattr(self, '_' + name, self._defaultHandler)
-        print(handler)
+        #print(handler)
         if not callable(handler):
             self.log.error("Message handler '%s' (type %s) is not callable", str(handler), type(handler))
             return
         handler(msg)
-
-
     # def _error(self, msg):
     #     """Handle error messages from the API."""
     #     code = getattr(msg, 'errorCode', None)
@@ -1003,8 +994,6 @@ class GBroke(gdax.WebsocketClient):
         pass
     def _down(self, msg):
         pass
-
-
     def _match(self, msg):
         acc = self._ticumulators.get(msg['product_id'])
         if acc is None:
@@ -1012,13 +1001,13 @@ class GBroke(gdax.WebsocketClient):
             return
 
         if msg['side'] == 'buy':
-            ask = float(msg['size'])
-            asksize = float(msg['price'])
+            ask = float(msg['price'])
+            asksize = float(msg['size'])
             acc.add('ask', ask)
             acc.add('asksize',asksize)
         elif msg['side'] == 'sell':
-            bid = float(msg['size'])
-            bidsize = float(msg['price'])
+            bid = float(msg['price'])
+            bidsize = float(msg['size'])
             acc.add('bid', bid)
             acc.add('bidsize', bidsize)
         else:
@@ -1028,11 +1017,11 @@ class GBroke(gdax.WebsocketClient):
         lastsize  = float(msg['size'])
         _lasttime  = ciso8601.parse_datetime(msg['time'])
         lasttime = time.mktime(_lasttime.timetuple())
-        print(lastprice,lastsize,_lasttime,lasttime)
+        #print(lastprice,lastsize,_lasttime,lasttime)
         acc.add('last', lastprice)
         acc.add('lastsize', lastsize)       # Ticumulator likes lastsize to come after last
         acc.add('lasttime', lasttime / 1000)
-        #acc.add('volume', volume)
+        #acc.add('volume', 0.0)
 
         #if msg.tickType == TickType.LAST_TIMESTAMP:
         #    pass # RTVOLUME is faster, more accurate, and doesn't have dupes.
@@ -1313,7 +1302,7 @@ class Ticumulator:
         self.last = float('NaN')
         self.lastsize = float('NaN')
         self.lasttime = float('NaN')
-        self.volume = float('NaN')
+        #self.volume = float('NaN')
         self.open_interest = float('NaN')
         # Computed for bar
         self.open = float('NaN')
@@ -1328,6 +1317,7 @@ class Ticumulator:
 
         Valid ``what`` values are the :attribute:`INPUT_FIELDS` (except `time`).
         """
+        #print(what,value)
         self.time = time.time()
         if what not in self.INPUT_FIELDS[1:]:
             raise ValueError("Invalid `what` '{}'".format(what))
@@ -1350,6 +1340,10 @@ class Ticumulator:
     @property
     def vwap(self):
         return (self.sum_last / self.sum_vol) if self.sum_vol else 0.0
+
+    @property
+    def volume(self):
+        return self.sum_vol if self.sum_vol else 0.0
 
     def bar(self):
         """:Return: a tuple of `(time, bid, bidsize, ask, asksize, last, lastsize, lasttime, open, high, low, close, vwap, volume, open_interest)`.

@@ -441,9 +441,7 @@ class GBroke(gdax.WebsocketClient):
         :param opt_type: 'PUT' or 'CALL' for options
         """
 
-
-
-        print(symbol,type(symbol))
+        print('get_instrument:',symbol,type(symbol))
         if isinstance(symbol, Instrument):
             return symbol
         elif isinstance(symbol, tuple):
@@ -472,6 +470,8 @@ class GBroke(gdax.WebsocketClient):
         #                     product_id='BTC-USD')
         print("contract:",contract)
         inst = Instrument(self, contract)
+        self._instruments[inst.id] = inst
+        self._positions.setdefault(inst.id, (0, None))  # ib.reqPositions() (called in reconcile()) only gives 0 positions for instruments traded recently, so we
         return inst
 
     def _request_contract_details(self, contract):

@@ -698,55 +698,58 @@ class GBroke(gdax.WebsocketClient):
             if order.open and (instrument is None or order.instrument == instrument):
                 yield copy(order)
 
-    # def reconcile(self):
-    #     """Refresh the local state of orders and positions with those from the server.
+    def reconcile(self):
+        """Refresh the local state of orders and positions with those from the server.
+
+        Note: Orders and positions can change while this method is executing.  To be sure
+        the state is synced, cancel all orders and pause for a bit before calling this method.
+
+        This method will retrieve all open orders for all API clients for this account.
+
+        This method blocks until all orders and positions are synced.
+
+        Updates the next order id.
+        """
+        self.log.debug('RECONCILE POSITIONS')
+        # if not self._reconcile_contract_requests.empty():
+        #     strays = tuple(iter_except(self._reconcile_contract_requests.get_nowait, Empty))
+        #     self.log.warning("reconcile() queue not empty: %s Attempt to call reconcile more than once concurrently?", strays)
+        # self._conn.reqPositions()               # generates _position() messages, which requests contract details and stuffs the request IDs into the _reconcile_contract_requests queue; positionEnd() stuffs a None
+        # # _position() itself will call _request_contract_details, and we wait on the results here.
+        # # Wait on all contractDetails request IDs to fill the queue, plus None from positionEnd; put into a tuple
+        # req_ids = tuple(iter_except(lambda: self._reconcile_contract_requests.get(timeout=self.timeout_sec), Empty))
+        # if not req_ids or req_ids[-1] is not None:
+        #     self.log.warning("reconcile() timed out waiting for positions; positions may be stale")
+        #
+        # for req_id in req_ids:
+        #     if req_id is not None:
+        #         try:
+        #             self._handle_contract_details(req_id)
+        #         except Exception as err:
+        #             self.log.error('In reconcile() for contract request %d: %s', req_id, str(err).replace('\n', ' '))
+
+        #TODO self._positions[inst_id] = (msg.pos, msg.avgCost / multiplier)
+        #self.auth_client.get_position()
+
+        # Get open orders second, since they may reference the instruments we just created above
+        self.log.debug('RECONCILE ORDERS')
+        # self._reconcile_open_orders_end.clear()
+        # self._conn.reqAllOpenOrders()
+        # if not self._reconcile_open_orders_end.wait(timeout=self.timeout_sec):
+        #     self.log.error('reconcile() timed out waiting for all open orders')
+        #
+        # self._conn.reqIds(-1)
+        self.log.debug('RECONCILE END')
     #
-    #     Note: Orders and positions can change while this method is executing.  To be sure
-    #     the state is synced, cancel all orders and pause for a bit before calling this method.
+    def log_positions(self):
+        """Log positions at INFO."""
+        for inst, pos, cost in self.get_positions():
+            self.log.info('POSITION %d @ %.2f %s', pos, cost, inst)
     #
-    #     This method will retrieve all open orders for all API clients for this account.
-    #
-    #     This method blocks until all orders and positions are synced.
-    #
-    #     Updates the next order id.
-    #     """
-    #     self.log.debug('RECONCILE POSITIONS')
-    #     if not self._reconcile_contract_requests.empty():
-    #         strays = tuple(iter_except(self._reconcile_contract_requests.get_nowait, Empty))
-    #         self.log.warning("reconcile() queue not empty: %s Attempt to call reconcile more than once concurrently?", strays)
-    #     self._conn.reqPositions()               # generates _position() messages, which requests contract details and stuffs the request IDs into the _reconcile_contract_requests queue; positionEnd() stuffs a None
-    #     # _position() itself will call _request_contract_details, and we wait on the results here.
-    #     # Wait on all contractDetails request IDs to fill the queue, plus None from positionEnd; put into a tuple
-    #     req_ids = tuple(iter_except(lambda: self._reconcile_contract_requests.get(timeout=self.timeout_sec), Empty))
-    #     if not req_ids or req_ids[-1] is not None:
-    #         self.log.warning("reconcile() timed out waiting for positions; positions may be stale")
-    #
-    #     for req_id in req_ids:
-    #         if req_id is not None:
-    #             try:
-    #                 self._handle_contract_details(req_id)
-    #             except Exception as err:
-    #                 self.log.error('In reconcile() for contract request %d: %s', req_id, str(err).replace('\n', ' '))
-    #
-    #     # Get open orders second, since they may reference the instruments we just created above
-    #     self.log.debug('RECONCILE ORDERS')
-    #     self._reconcile_open_orders_end.clear()
-    #     self._conn.reqAllOpenOrders()
-    #     if not self._reconcile_open_orders_end.wait(timeout=self.timeout_sec):
-    #         self.log.error('reconcile() timed out waiting for all open orders')
-    #
-    #     self._conn.reqIds(-1)
-    #     self.log.debug('RECONCILE END')
-    #
-    # def log_positions(self):
-    #     """Log positions at INFO."""
-    #     for inst, pos, cost in self.get_positions():
-    #         self.log.info('POSITION %d @ %.2f %s', pos, cost, inst)
-    #
-    # def log_open_orders(self):
-    #     """Log open orders at INFO."""
-    #     for order in self.get_open_orders():
-    #         self.log.info('OPEN ORDER %s', order)
+    def log_open_orders(self):
+        """Log open orders at INFO."""
+        for order in self.get_open_orders():
+            self.log.info('OPEN ORDER %s', order)
     #
     # def market_open(self, instrument: Instrument, time: Optional[datetime] = None, afterhours: bool = True) -> bool:
     #     """:Return: True if `instrument` trades at the given `time`, which defaults to now.

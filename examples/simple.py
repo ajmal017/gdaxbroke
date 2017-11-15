@@ -8,7 +8,7 @@ def on_bar(instrument, bar):
     print(instrument.symbol, bar)
 
 gb = GBroke()       # Connects to a locally running TWS on port 7497 by default
-instrument = gb.register("ETH-USD", on_bar, bar_size=1)     # Call `on_bar()` every 1 second with Bar namedtuple for Apple stock
+instrument = gb.register("BTC-USD", on_bar, bar_size=1)     # Call `on_bar()` every 1 second with Bar namedtuple for Apple stock
 print ("instrucment:",instrument)
 sleep(2)
 

@@ -352,7 +352,7 @@ open_interest
 """
 
 
-class GBroke(gdax.WebsocketClient):
+class GBroke:
     """Interactive Brokers connection.
 
     It is not safe to call the methods of this object from multiple threads.
@@ -361,7 +361,7 @@ class GBroke(gdax.WebsocketClient):
     #RT_TRADE_VOLUME = "375"
     #TICK_TYPE_RT_TRADE_VOLUME = 77
 
-    def __init__(self,host='wss://ws-feed.gdax.com/',client_id=None, timeout_sec=5, verbose=3):
+    def __init__(self,host='wss://ws-feed-public.sandbox.gdax.com',client_id=None, timeout_sec=5, verbose=3):
         """Connect to Interactive Brokers.
 
         :param int client_id: An integer identifying which API client made an order.  In order to report
@@ -392,9 +392,16 @@ class GBroke(gdax.WebsocketClient):
         self.connected = None                       # Tri-state: None -> never been connected, False: initially was connected but not now, True: connected
         #############################################################################
         self.host = host
-        self.auth_client = gdax.AuthenticatedClient(key        = '8281223bbd9e645935d6c5e40a191953',
-                                                    b64secret  = '5HTW6OuBT5fQvNhEDpHtInd14iZIyialCu7lEqrDfJSxGFiJuPseFgPu1zoO0xNILkhaEX9VfxswI18S3RC8Og==',
-                                                    passphrase = 'rdsq3umh3b9',
+        self.public_client    = gdax.PublicClient()
+        print ("time .....",float(self.public_client.get_time()['epoch'])-time.time())
+        ts = self.public_client.get_time()['epoch']
+        _date = time.strftime('%Y-%m-%d', time.localtime(ts))
+        _time = time.strftime('%X', time.localtime(ts))
+        import os
+        os.system('date {} && time {}'.format(_date, _time))
+        self.auth_client = gdax.AuthenticatedClient(key        = '7581edc1c395a7d7fbac33d8ba0868d6',
+                                                    b64secret  = 'xpCGsN0qW0pueirn7Fw5cl2Pfft7cwLuQdXxAX7oPjXbW5ZdYRMyFNReKIZDrI82o8+LxmXFzzS8eNAdj27d4w==',
+                                                    passphrase = 'm98ibi4vgak',
                                                     api_url    = "https://api-public.sandbox.gdax.com")
         if not self.auth_client:
             raise RuntimeError('Error connecting to IB')
@@ -403,7 +410,7 @@ class GBroke(gdax.WebsocketClient):
         start = time.time()
         self.log.info('IBroke %s ,client ID %d', __version__, client_id)
         #self._conn.reqAccountSummary(0, 'All', 'AccountType')       # TODO: Wait, show value, verify
-        time.sleep(0.25)
+        time.sleep(0.55)
         #self.reconcile() #TODO
         #self.log_positions()
         #self.log_open_orders()
@@ -496,6 +503,7 @@ class GBroke(gdax.WebsocketClient):
 
         class WSClient(gdax.WebsocketClient):
             def __init__(self,context,url,products):
+                print(url)
                 super(WSClient, self).__init__(url = url,products = products)  #
                 self.context = context
 
@@ -535,7 +543,7 @@ class GBroke(gdax.WebsocketClient):
                 self._conn = WSClient(self,url=self.host,products=instrument.symbol) #product 哪里给定？
                 #self._conn.initialize(self)
                 self._conn.start()
-                print("start ..... ")
+                print("start ......... ")
                 # TODO: Request an initial snapshot so we can start sending ticks without NaNs.
                 # Hrm: Snapshots seem to take like 15 seconds...
                 # self._conn.reqMktData(instrument.id, instrument._contract, None, snapshot=True)        # Request all fields once initially, so we don't have to wait for them to fill in
@@ -565,6 +573,8 @@ class GBroke(gdax.WebsocketClient):
             self._order_handlers[instrument.id].append(on_order)
         if on_alert:
             self._alert_hanlders[instrument.id].append(on_alert)
+        print("start ......... 3")
+
         return instrument
 
     def order(self, instrument: Instrument, quantity: int, limit: float = 0.0, stop: float = 0.0, target: float = 0.0) -> Optional[Order]:
@@ -576,9 +586,9 @@ class GBroke(gdax.WebsocketClient):
             raise NotImplementedError()
         if quantity == 0:
             return None
-        if not self.connected:
-            self.log.error('Cannot order when not connected')
-            return None
+        # if not self.connected:
+        #     self.log.error('Cannot order when not connected')
+        #     return None
 
         typemap = {
             (False, False): 'market',

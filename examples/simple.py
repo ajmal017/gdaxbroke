@@ -12,7 +12,7 @@ instrument = gb.register("BTC-USD", on_bar, bar_size=1)     # Call `on_bar()` ev
 print ("instrucment:",instrument)
 sleep(2)
 
-gb.order_target(instrument,0.1)
+gb.order_target(instrument,0.01)
 
-print('pos:',gb.get_positions())
+print('pos:',gb.get_position(instrument))
 sleep(10000)

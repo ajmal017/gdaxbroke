@@ -399,9 +399,9 @@ class GBroke:
         _time = time.strftime('%X', time.localtime(ts))
         import os
         os.system('date {} && time {}'.format(_date, _time))
-        self.auth_client = gdax.AuthenticatedClient(key        = '7581edc1c395a7d7fbac33d8ba0868d6',
-                                                    b64secret  = 'xpCGsN0qW0pueirn7Fw5cl2Pfft7cwLuQdXxAX7oPjXbW5ZdYRMyFNReKIZDrI82o8+LxmXFzzS8eNAdj27d4w==',
-                                                    passphrase = 'm98ibi4vgak',
+        self.auth_client = gdax.AuthenticatedClient(key        = '60b6f858a7c472ee090df71dd36068cf',
+                                                    b64secret  = 'lpsqt9T/eF3/Jz42mkRZb7/q/x+wvFvUeTrvlOJadDX7bQHTJtC9QeD5Apj2hpb3njhBZVMbz9rmMRl9FA6juA==',
+                                                    passphrase = 'fdafdafdafds',
                                                     api_url    = "https://api-public.sandbox.gdax.com")
         if not self.auth_client:
             raise RuntimeError('Error connecting to IB')
@@ -410,10 +410,10 @@ class GBroke:
         start = time.time()
         self.log.info('IBroke %s ,client ID %d', __version__, client_id)
         #self._conn.reqAccountSummary(0, 'All', 'AccountType')       # TODO: Wait, show value, verify
-        time.sleep(0.55)
-        #self.reconcile() #TODO
-        #self.log_positions()
-        #self.log_open_orders()
+        time.sleep(0.15)
+        self.reconcile() #TODO
+        self.log_positions()
+        self.log_open_orders()
 
     def get_instrument(self, symbol: Union[str, ContractTuple, int, Instrument], sec_type: str = 'STK', exchange: str = 'SMART', currency: str = 'USD', expiry: Optional[str] = None, strike: float = 0.0, opt_type: Optional[str] = None) -> Instrument:
         """Return an :class:`Instrument` object defining what will be purchased, at which exchange and in which currency.
@@ -460,7 +460,7 @@ class GBroke:
         print("contract:",contract)
         inst = Instrument(self, contract)
         self._instruments[inst.id] = inst
-        self._positions.setdefault(inst.id, (0, None))  # ib.reqPositions() (called in reconcile()) only gives 0 positions for instruments traded recently, so we
+        self._positions.setdefault(inst.id, 0)  # ib.reqPositions() (called in reconcile()) only gives 0 positions for instruments traded recently, so we
         return inst
     # def _request_contract_details(self, contract):
     #     """Call reqContractDetails and stuff the results in ``self._contract_details[req_id]``, where `req_id` is the return value."""
@@ -561,12 +561,14 @@ class GBroke:
                     pass
                 assert len(self._tick_handlers[instrument.id]) == 1, 'Found more than initial tick handler on register {}: {}'.format(instrument.id, self._tick_handlers[instrument.id])
                 self._tick_handlers[instrument.id].pop()        # Remove initial handler
+            print("start .........1 ")
             if bar_type == 'tick':
                 self._tick_handlers[instrument.id].append(on_bar)
             elif bar_type == 'time':
                 if len(frozenset(inst.id for _, _, inst in self._bar_handlers)) > 1:
                     raise NotImplementedError("Can't handle multiple bar types / sizes yet (instrument {})".format(instrument))
                 self._bar_handlers[(bar_type, bar_size, instrument.id)].append(on_bar)
+                print("start .........2 ")
                 RecurringTask(lambda: self._call_bar_handlers(bar_type, bar_size, instrument.id), interval_sec=bar_size, init_sec=1, daemon=True)        # This apparently sticks around even without maintaining a reference...
             self.log.debug('REGISTER %d %s', instrument.id, instrument)
         if on_order:
@@ -609,30 +611,31 @@ class GBroke:
         #order.m_allOrNone = False   # Fill or Kill
         #order.m_goodTillDate = "" #  FORMAT: 20060505 08:00:00 {time zone}
         #order.m_clientId = self._conn.clientId
-        order.m_orderId = order_id = self._next_order_id() #TODO
-
-        self.log.debug('ORDER %d: %s %s', order_id, obj2dict(instrument._contract), obj2dict(order))
-        self._orders[order_id] = Order._from_gb(order, order_id, instrument)
-        self.log.info('ORDER %s', self._orders[order_id])
+        #order.m_orderId = order_id = self._next_order_id() #TODO
+        order_id = '' #placeholder
+        self.log.debug('ORDER %s: %s %s', order_id, obj2dict(instrument._contract), obj2dict(order))
+        #self._orders[order_id] = Order._from_gb(order, order_id, instrument)
+        #self.log.info('ORDER %s', self._orders[order_id])
         #self._conn.placeOrder(order_id, instrument._contract, order)        # This needs to come after updating self._orders
-        print("order.m_action:",order.m_action,order.m_orderType,order.m_orderId,instrument.id)
+        print("============================order.m_action:",order.m_action,order.m_orderType,order.m_orderId,instrument.id,order.m_totalQuantity,order.m_lmtPrice)
         if order.m_action == 'BUY':
-            res = self.auth_client.buy(client_oid = order.m_orderId,
+            res = self.auth_client.buy(#client_oid = order.m_orderId*10,
                                  type = order.m_orderType,
-                                 price=order.m_lmtPrice,  # USD  #TODO FOR STOP
-                                 size=order.m_totalQuantity,  # BTC
+                                 #price=order.m_lmtPrice,  # USD  #TODO FOR STOP
+                                 size=str(order.m_totalQuantity),  # BTC
                                  product_id=instrument.id)
             print("res:",res) #TODO  https://api.coinbase.com/v2/time
-
         elif order.m_action == 'SELL':
-            res = self.auth_client.sell(client_oid=order.m_orderId,
+            res = self.auth_client.sell(#client_oid=order.m_orderId,
                                  type=order.m_orderType,
-                                 price=order.m_lmtPrice,  # USD  #TODO FOR STOP
+                                 #price=order.m_lmtPrice,  # USD  #TODO FOR STOP
                                  size=order.m_totalQuantity,  # BTC
                                  product_id=instrument.id)
             print(res)
         else :
             pass
+        order_id = res['id']
+        self._orders[order_id] = Order._from_gb(order, order_id, instrument)
         return copy(self._orders[order_id])
     #
     def order_target(self, instrument, quantity, limit=0.0, stop=0.0):
@@ -648,13 +651,13 @@ class GBroke:
         if pos is None:
             self.log.warning('get_position() for unknown instrument {}'.format(instrument))
             return 0
-        return pos[0]
+        return pos
     #
     def get_positions(self):
         """:Return: an iterator of ``(instrument, position, avg_cost)`` tuples for any non-zero positions in this account."""
-        for inst_id, (pos, avg_cost) in self._positions.items():
+        for inst_id, pos in self._positions.items():
             if pos:
-                yield (self._instruments.get(inst_id), pos, avg_cost)
+                yield (self._instruments.get(inst_id), pos)
 
     def get_cost(self, instrument):
         """:Return: the average cost of currently held shares of `instrument`.  If no shares held, return None."""
@@ -739,7 +742,22 @@ class GBroke:
         #             self.log.error('In reconcile() for contract request %d: %s', req_id, str(err).replace('\n', ' '))
 
         #TODO self._positions[inst_id] = (msg.pos, msg.avgCost / multiplier)
-        #self.auth_client.get_position()
+        #latest_trade = self.public_client.get_product_trades("BTC-USD")
+        #print(latest_trade)
+        #float(latest_trade[0]['price'])
+        position = self.auth_client.get_position()
+        print(position)
+        if 'BTC' in position:
+           balance = position['BTC']['balance']
+        else:
+           balance = 0
+        self._positions["BTC-USD"] = balance
+
+        if 'LTC' in position:
+            balance = position['LTC']['balance']
+        else:
+            balance = 0
+        self._positions["LTC-USD"] = balance
 
         # Get open orders second, since they may reference the instruments we just created above
         self.log.debug('RECONCILE ORDERS')
@@ -754,7 +772,7 @@ class GBroke:
     def log_positions(self):
         """Log positions at INFO."""
         for inst, pos, cost in self.get_positions():
-            self.log.info('POSITION %d @ %.2f %s', pos, cost, inst)
+            self.log.info('POSITION %d @ %s', pos, inst)
     #
     def log_open_orders(self):
         """Log open orders at INFO."""
@@ -874,7 +892,7 @@ class GBroke:
         instrument = self._instruments.get(ticker_id)
         acc = self._ticumulators.get(ticker_id)
         handlers = self._bar_handlers.get((bar_type, bar_size, ticker_id))
-        #print("#################################",acc,instrument,handlers)
+        print("#################################",acc,instrument,handlers)
         if acc is None or instrument is None or handlers is None:
             self.log.warning('No instrument, ticumulator, or handlers found for ID %d calling %s %f bar handlers', ticker_id, bar_type, bar_size)
         else:

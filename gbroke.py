@@ -504,7 +504,13 @@ class GBroke:
         class WSClient(gdax.WebsocketClient):
             def __init__(self,context,url,products):
                 print(url)
-                super(WSClient, self).__init__(url = url,products = products)  #
+                super(WSClient, self).__init__(url = url,
+                                               products = products,
+                                               auth = True,
+                                               api_key = '60b6f858a7c472ee090df71dd36068cf',
+                                               api_secret = 'lpsqt9T/eF3/Jz42mkRZb7/q/x+wvFvUeTrvlOJadDX7bQHTJtC9QeD5Apj2hpb3njhBZVMbz9rmMRl9FA6juA==',
+                                               api_passphrase = 'fdafdafdafds'
+                                               )  #
                 self.context = context
 
             #def initialize(self,gbroke):
@@ -913,6 +919,7 @@ class GBroke:
         """Root message handler, dispatches to methods named `_typeName`.
         E.g., `tickString` messages are dispatched to `self._tickString()`.
         """
+        print(msg)
         if self.verbose >= 5:
             self.log.debug('MSG %s', str(msg))
 
@@ -1074,6 +1081,43 @@ class GBroke:
         # else:       # Unknown tickType
         return
 
+    def _change(self, msg):
+       print("------------------------------------------------------------------------change msg------------------------------------------------------------------- :",msg)
+       self.log.debug('STATE %s', msg['order_id'])
+       order = self._orders.get(msg['order_id'])
+       if not order:
+           self.log.info('EXOGENOUS ORDER #%d for %s', msg['order_id'])
+           instrument = self._instruments.get(msg['product_id'])
+           if instrument is None:
+               self.log.error('Open order #%d for unknown instrument %s',msg['product_id'],
+                              instrument)
+               return
+           else:
+               _order = GOrder()  # TODO
+               _order.m_action = msg['side'] #UPPER
+               _order.m_totalQuantity = abs(msg['new_size'])
+               _order.m_lmtPrice = msg['price']
+               order = self._orders[msg['product_id']] = Order._from_gb(_order, msg['product_id'], instrument) #TODO
+
+       assert order.id == msg.orderId
+       assert order.instrument._contract.m_symbol == msg.contract.m_symbol  # TODO: More thorough equality
+       if order.open_time is None:
+           order.open_time = time.time()
+       # possible status: Submitted Cancelled Filled Inactive
+       # if msg.orderState.m_status == 'Cancelled':
+       #     order.cancelled = True
+       #     order.open = False
+       # elif msg.orderState.m_status == 'Filled':  # Filled means completely filled
+       #     if order.open:  # Only log first of dupe msgs
+       #         self.log.info('COMPLETE %s avg price %f', order, order.avg_price)
+       #     order.open = False
+       #
+       # if msg.orderState.m_warningText:
+       #     warnText = msg.orderState.m_warningText.replace('\n', ' ')
+       #     self.log.warning('Order %d: %s', msg.orderId, warnText)
+       #     order.message = warnText
+
+       return
     # def _tickPrice(self, msg):
     #     """Called when market data tick prices change."""
     #     acc = self._ticumulators.get(msg.tickerId)

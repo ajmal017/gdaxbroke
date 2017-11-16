@@ -1086,7 +1086,7 @@ class GBroke:
             print('my order .....')
             order = self._orders.get(msg['order_id'])
             if not order:
-                self.log.info('EXOGENOUS ORDER #%d for %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
+                #self.log.info('EXOGENOUS ORDER #%d for %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
                 instrument = self._instruments.get(msg['product_id'])
                 if instrument is None:
                     self.log.error('Open order #%d for unknown instrument %s', msg.orderId, instrument_tuple_from_contract(msg.contract))

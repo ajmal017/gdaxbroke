@@ -1080,8 +1080,32 @@ class GBroke:
         # #o.profit    =
         # self._orders[o.order_id] = o
         pass
-    def _down(self, msg):
-        pass
+    def _done(self, msg):
+
+        if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
+            print('my order .....')
+            order = self._orders.get(msg['order_id'])
+            if not order:
+                self.log.info('EXOGENOUS ORDER #%d for %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
+                instrument = self._instruments.get(msg['product_id'])
+                if instrument is None:
+                    self.log.error('Open order #%d for unknown instrument %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
+                    return
+                else:
+                    # order = Order(_id=str(msg['id']),
+                    #               instrument=self._instruments.get(str(msg['product_id'])),
+                    #               price=float(msg['price']),
+                    #               quantity=float(msg['size']),
+                    #               filled=0,
+                    #               open=True,
+                    #               cancelled=False)
+                    # _created_at = ciso8601.parse_datetime(msg['created_at'])
+                    # created_at = time.mktime(_created_at.timetuple())
+                    # order.open_time = created_at / 1000
+                    pass
+        else:
+            pass
+
     def _active(self,msg):
         pass
     def _match(self, msg):

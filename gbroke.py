@@ -82,6 +82,17 @@ InstrumentDefaults = namedtuple('InstrumentDefaults', 'symbol sec_type exchange 
 #: Default values for instrument fields
 INSTRUMENT_DEFAULTS = InstrumentDefaults(None, 'STK', 'GDAX', 'USD', None, 0.0, None)
 
+APK_KEY = '88cec4ec5adbafa9412b4bdb57a51af6'
+API_SECRET  = 'ARF3RXbnDD4ukc9/GyNod+FDWcwG8anlMUBy63mk2DP1g6sxyj4GZGP5eQO1LA3DP0pc3a3Io8cHihf28Qgj+Q=='
+API_PASSPHRASE  = 'trewtwr'
+
+
+
+
+
+
+
+
 
 class Contract():
     """ generated source for class Contract """
@@ -399,9 +410,9 @@ class GBroke:
         _time = time.strftime('%X', time.localtime(ts))
         import os
         os.system('date {} && time {}'.format(_date, _time))
-        self.auth_client = gdax.AuthenticatedClient(key        = '60b6f858a7c472ee090df71dd36068cf',
-                                                    b64secret  = 'lpsqt9T/eF3/Jz42mkRZb7/q/x+wvFvUeTrvlOJadDX7bQHTJtC9QeD5Apj2hpb3njhBZVMbz9rmMRl9FA6juA==',
-                                                    passphrase = 'fdafdafdafds',
+        self.auth_client = gdax.AuthenticatedClient(key        = APK_KEY,
+                                                    b64secret  = API_SECRET,
+                                                    passphrase = API_PASSPHRASE,
                                                     api_url    = "https://api-public.sandbox.gdax.com")
         if not self.auth_client:
             raise RuntimeError('Error connecting to IB')
@@ -507,9 +518,9 @@ class GBroke:
                 super(WSClient, self).__init__(url = url,
                                                products = products,
                                                auth = True,
-                                               api_key = '60b6f858a7c472ee090df71dd36068cf',
-                                               api_secret = 'lpsqt9T/eF3/Jz42mkRZb7/q/x+wvFvUeTrvlOJadDX7bQHTJtC9QeD5Apj2hpb3njhBZVMbz9rmMRl9FA6juA==',
-                                               api_passphrase = 'fdafdafdafds'
+                                               api_key = APK_KEY,
+                                               api_secret = API_SECRET,
+                                               api_passphrase = API_PASSPHRASE
                                                )  #
                 self.context = context
 
@@ -567,21 +578,18 @@ class GBroke:
                     pass
                 assert len(self._tick_handlers[instrument.id]) == 1, 'Found more than initial tick handler on register {}: {}'.format(instrument.id, self._tick_handlers[instrument.id])
                 self._tick_handlers[instrument.id].pop()        # Remove initial handler
-            print("start .........1 ")
             if bar_type == 'tick':
                 self._tick_handlers[instrument.id].append(on_bar)
             elif bar_type == 'time':
                 if len(frozenset(inst.id for _, _, inst in self._bar_handlers)) > 1:
                     raise NotImplementedError("Can't handle multiple bar types / sizes yet (instrument {})".format(instrument))
                 self._bar_handlers[(bar_type, bar_size, instrument.id)].append(on_bar)
-                print("start .........2 ")
                 RecurringTask(lambda: self._call_bar_handlers(bar_type, bar_size, instrument.id), interval_sec=bar_size, init_sec=1, daemon=True)        # This apparently sticks around even without maintaining a reference...
             self.log.debug('REGISTER %d %s', instrument.id, instrument)
         if on_order:
             self._order_handlers[instrument.id].append(on_order)
         if on_alert:
             self._alert_hanlders[instrument.id].append(on_alert)
-        print("start ......... 3")
 
         return instrument
 
@@ -746,24 +754,31 @@ class GBroke:
         #             self._handle_contract_details(req_id)
         #         except Exception as err:
         #             self.log.error('In reconcile() for contract request %d: %s', req_id, str(err).replace('\n', ' '))
-
         #TODO self._positions[inst_id] = (msg.pos, msg.avgCost / multiplier)
         #latest_trade = self.public_client.get_product_trades("BTC-USD")
         #print(latest_trade)
         #float(latest_trade[0]['price'])
         position = self.auth_client.get_position()
-        print(position)
+        print("-----------pos:",position)
         if 'BTC' in position:
            balance = position['BTC']['balance']
         else:
            balance = 0
         self._positions["BTC-USD"] = balance
-
         if 'LTC' in position:
             balance = position['LTC']['balance']
         else:
             balance = 0
         self._positions["LTC-USD"] = balance
+        if 'USD' in position:
+            balance = position['USD']['balance']
+        else:
+            balance = 0
+        self._positions['USD'] = balance
+
+        self.user_id = position['user_id']
+        self.profile_id = position['profile_id']
+        print("user_id %s,profile_id:%s" % (self.user_id,self.profile_id))
 
         # Get open orders second, since they may reference the instruments we just created above
         self.log.debug('RECONCILE ORDERS')
@@ -773,6 +788,26 @@ class GBroke:
         #     self.log.error('reconcile() timed out waiting for all open orders')
         #
         # self._conn.reqIds(-1)
+        os = self.auth_client.get_orders()
+        print("x",os)
+        for product in os:
+            for msg in product:
+                print(msg)
+                order = Order(_id=str(msg['id']),
+                          instrument=self._instruments.get(str(msg['product_id'])),
+                          price=float(msg['price']),
+                          quantity=float(msg['size']),
+                          filled=0,
+                          open=True,
+                          cancelled=False)
+                _created_at = ciso8601.parse_datetime(msg['created_at'])
+                created_at = time.mktime(_created_at.timetuple())
+                order.open_time = created_at / 1000
+                # o.fill_time =
+                # o.avg_price =
+                # o.profit    =
+                self._orders[order.order_id] = order
+
         self.log.debug('RECONCILE END')
     #
     def log_positions(self):
@@ -898,7 +933,7 @@ class GBroke:
         instrument = self._instruments.get(ticker_id)
         acc = self._ticumulators.get(ticker_id)
         handlers = self._bar_handlers.get((bar_type, bar_size, ticker_id))
-        print("#################################",acc,instrument,handlers)
+        #print("#################################",acc,instrument,handlers)
         if acc is None or instrument is None or handlers is None:
             self.log.warning('No instrument, ticumulator, or handlers found for ID %d calling %s %f bar handlers', ticker_id, bar_type, bar_size)
         else:
@@ -1029,8 +1064,25 @@ class GBroke:
     def _received(self, msg):
         pass
     def _open(self, msg):
+
+        # o = Order(_id = str(msg['id']),
+        #           instrument = self._instruments.get(str(msg['product_id'])),
+        #           price = float(msg['price']),
+        #           quantity= float(msg['size']),
+        #           filled=0,
+        #           open=True,
+        #           cancelled=False)
+        # _created_at = ciso8601.parse_datetime(msg['created_at'])
+        # created_at = time.mktime(_created_at.timetuple())
+        # o.open_time = created_at  / 1000
+        # #o.fill_time =
+        # #o.avg_price =
+        # #o.profit    =
+        # self._orders[o.order_id] = o
         pass
     def _down(self, msg):
+        pass
+    def _active(self,msg):
         pass
     def _match(self, msg):
         acc = self._ticumulators.get(msg['product_id'])
@@ -1080,9 +1132,8 @@ class GBroke:
         #         acc.add('volume', volume)
         # else:       # Unknown tickType
         return
-
     def _change(self, msg):
-       print("------------------------------------------------------------------------change msg------------------------------------------------------------------- :",msg)
+       #print("------------------------------------------------------------------------change msg------------------------------------------------------------------- :",msg)
        self.log.debug('STATE %s', msg['order_id'])
        order = self._orders.get(msg['order_id'])
        if not order:

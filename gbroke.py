@@ -794,7 +794,7 @@ class GBroke:
         for product in os:
             for msg in product:
                 print(msg)
-                order = Order(_id=str(msg['id']),
+                order = Order(id_=str(msg['id']),
                           instrument=self._instruments.get(str(msg['product_id'])),
                           price=float(msg['price']),
                           quantity=float(msg['size']) if msg["side"] == "buy" else -float(msg['size']),
@@ -1007,7 +1007,6 @@ class GBroke:
                                    instrument_tuple_from_contract(msg.contract))
                     return
                 else:
-
                     size = 0.0
                     if  msg['order_type'] == 'limit':
                         if msg['side'] == 'buy':
@@ -1020,10 +1019,10 @@ class GBroke:
                         else:
                             size -= float(msg['funds'])
 
-                    order = Order(_id=str(msg['order_id']),
+                    order = Order(id_=str(msg['order_id']),
                                   instrument=self._instruments.get(str(msg['product_id'])),
                                   price=float(msg['price']) if msg['order_type'] == 'limit'else 0.0,
-                                  quantity= size,
+                                  quantity = float(size),
                                   filled=0,
                                   open=True,
                                   cancelled=False)
@@ -1048,7 +1047,7 @@ class GBroke:
                 self.log.error('Open order #%d for unknown instrument %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
                 return
             else:
-                order = Order(_id=str(msg['id']),
+                order = Order(id_=str(msg['id']),
                               instrument=self._instruments.get(str(msg['product_id'])),
                               price=float(msg['price']),
                               quantity=float(msg['size']) if  msg["side"] == "buy" else -float(msg['size']),

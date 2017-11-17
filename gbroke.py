@@ -1008,7 +1008,7 @@ class GBroke:
                                    instrument_tuple_from_contract(msg.contract))
                     return
                 else:
-                    order = Order(_id=str(msg['id']),
+                    order = Order(_id=str(msg['order_id']),
                                   instrument=self._instruments.get(str(msg['product_id'])),
                                   price=float(msg['price']),
                                   quantity=float(msg['remaining_size']) if msg["side"] == "buy" else -float(

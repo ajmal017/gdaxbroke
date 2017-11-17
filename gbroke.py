@@ -999,7 +999,6 @@ class GBroke:
         if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
             print('my order .....')
             order = self._orders.get(msg['order_id'])
-            assert order == None
             if not order:
                 # self.log.info('EXOGENOUS ORDER #%d for %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
                 instrument = self._instruments.get(msg['product_id'])

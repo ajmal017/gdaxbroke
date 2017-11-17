@@ -649,7 +649,8 @@ class GBroke:
         else :
             pass
         order_id = res['id']
-        self._orders[order_id] = Order._from_gb(order, order_id, instrument)
+        if not self._orders.get(order_id):
+            self._orders[order_id] = Order._from_gb(order, order_id, instrument)
         return copy(self._orders[order_id])
     #
     def order_target(self, instrument, quantity, limit=0.0, stop=0.0):
@@ -679,7 +680,7 @@ class GBroke:
         if pos is None:
             self.log.warning('get_cost() for unknown instrument {}'.format(instrument))
             return None
-        return pos[1] or None
+        return pos or None
     #
     def cancel(self, order):
         """Cancel an `order`."""
@@ -789,15 +790,14 @@ class GBroke:
         #
         # self._conn.reqIds(-1)
         os = self.auth_client.get_orders()
-        print("x",os)
         for product in os:
             for msg in product:
                 print(msg)
                 order = Order(_id=str(msg['id']),
                           instrument=self._instruments.get(str(msg['product_id'])),
                           price=float(msg['price']),
-                          quantity=float(msg['size']),
-                          filled=0,
+                          quantity=float(msg['size']) if msg["side"] == "buy" else -float(msg['size']),
+                          filled=float(msg['filled_size']),
                           open=True,
                           cancelled=False)
                 _created_at = ciso8601.parse_datetime(msg['created_at'])
@@ -820,81 +820,15 @@ class GBroke:
         for order in self.get_open_orders():
             self.log.info('OPEN ORDER %s', order)
     #
-    # def market_open(self, instrument: Instrument, time: Optional[datetime] = None, afterhours: bool = True) -> bool:
-    #     """:Return: True if `instrument` trades at the given `time`, which defaults to now.
-    #
-    #     This only works for (roughly) the current and following day, and may not work for times in the past.
-    #
-    #     :param time: Must be a timezone-aware datetime to compare to market hours.  Defaults to now.
-    #     :param afterhours: If ``afterhours = False``, ``market_open()`` will only return True for times
-    #       inside normal market hours.  If ``afterhours = True``, it will return true for times inside
-    #       afterhours trading as well.  (Technically ``afterhours = False`` means only return true during
-    #       "liquid" market hours, according to IB.)
-    #     :raises ValueError: If `time` is outside the known schedule for this instrument.  Usually that's only
-    #       today and tomorrow.
-    #     """
-    #     # This is an IBroke method instead of Instrument to avoid mutuable Instrument state.
-    #     # The info underlying an Instrument can change (e.g. market hours), but we want the canonical Instrument with the latest info.
-    #     # So we always look it up from IBroke, refreshing if necessary.
-    #     now_ = now()
-    #     if time is None:
-    #         time = now_
-    #     if not time.tzinfo:
-    #         raise ValueError('Time must have a timezone.')
-    #
-    #     instrument = self._ensure_fresh_instrument_data(instrument)
-    #     open_hours = instrument._trading_hours if afterhours else instrument._liquid_hours
-    #     assert open_hours, 'Empty trading hours'
-    #     earliest, latest = open_hours[0][0], open_hours[-1][1]
-    #     if time < earliest and time < now_ - timedelta(seconds=self.timeout_sec):
-    #         raise ValueError('Time {} earlier than available schedule {}'.format(time, earliest))
-    #     if time > latest:
-    #         self.log.warning('market_open() request {} beyond time horizon {}, assuming closed.'.format(time, latest))
-    #     return any(start <= time <= end for start, end in open_hours)
-    #
-    # def market_hours(self, instrument: Instrument, afterhours: bool = True) -> Tuple[Optional[datetime], Optional[datetime]]:
-    #     """:Return: the next market opening and closing time of the given `instrument`.
-    #
-    #     Note either may be sooner than the other, and either or both may be None.
-    #
-    #     :param afterhours: If True, return next times for after hours trading.
-    #       If False, return next times for regular trading hours.
-    #     """
-    #     now_ = now()
-    #     instrument = self._ensure_fresh_instrument_data(instrument)      # Update market hours if necessary
-    #     open_hours = instrument._trading_hours if afterhours else instrument._liquid_hours
-    #     latest = open_hours[-1][1] if open_hours else None
-    #     if not latest or now_ > latest:
-    #         self.log.warning('market_hours() request {} beyond time horizon {}, no hours available.'.format(now_, latest))
-    #     open_, close = None, None
-    #     for start, end in open_hours:
-    #         if open_ is None and now_ <= start:
-    #             open_ = start
-    #         if close is None and now_ <= end:
-    #             close = end
-    #     return open_, close
-    #
-    # def _ensure_fresh_instrument_data(self, instrument: Instrument) -> Instrument:
-    #     """Check if market hours data for `instrument` is stale and re-request, returning a new Instrument."""
-    #     instrument = self.get_instrument(instrument.id)  # Lookup canonical Instrument by id; passing an Instrument returns the same object.
-    #     # If market hours data is out of date, refresh.
-    #     # Since we only get data for today and tomorrow, and not data for closed days, refresh if today != instrument timestamp day
-    #     # (Hard to do just based on our market hours data structure, without timestamp, since entire closed days aren't represented.)
-    #     today = now().astimezone(instrument._created_time.tzinfo).date()
-    #     if instrument._created_time.date() != today:
-    #         earliest, latest = instrument._trading_hours[0][0], instrument._trading_hours[-1][1]
-    #         self.log.debug('REFRESH {} before: {} -- {}  ({:.0f} h)'.format(instrument, earliest, latest, (latest - earliest).total_seconds() / 3600))
-    #         req_id = self._request_contract_details(instrument._contract)
-    #         instrument = self._handle_contract_details(req_id)  # TODO: Waiting might lead to deadlock if we're called in another request?
-    #         earliest, latest = instrument._trading_hours[0][0], instrument._trading_hours[-1][1]
-    #         self.log.debug('REFRESH {} after : {} -- {}  ({:.0f} h)'.format(instrument, earliest, latest, (latest - earliest).total_seconds() / 3600))
-    #     return instrument
-    #
-    # def disconnect(self):
-    #     """Disconnect from IB, rendering this object mostly useless."""
-    #     self.connected = False
-    #     self._conn.disconnect()
-    #
+    def market_open(self, instrument: Instrument, time: Optional[datetime] = None, afterhours: bool = True) -> bool:
+        return True
+
+    def disconnect(self):
+        """Disconnect from IB, rendering this object mostly useless."""
+        self.connected = False
+        self._conn.close()
+
+
     def _next_order_id(self):
         """Increment the internal order id counter and return it."""
         self.__next_order_id += 1
@@ -1064,24 +998,33 @@ class GBroke:
     def _received(self, msg):
         pass
     def _open(self, msg):
-
-        # o = Order(_id = str(msg['id']),
-        #           instrument = self._instruments.get(str(msg['product_id'])),
-        #           price = float(msg['price']),
-        #           quantity= float(msg['size']),
-        #           filled=0,
-        #           open=True,
-        #           cancelled=False)
-        # _created_at = ciso8601.parse_datetime(msg['created_at'])
-        # created_at = time.mktime(_created_at.timetuple())
-        # o.open_time = created_at  / 1000
-        # #o.fill_time =
-        # #o.avg_price =
-        # #o.profit    =
-        # self._orders[o.order_id] = o
+        if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
+            print('my order .....')
+            order = self._orders.get(msg['order_id'])
+            assert order == None
+            if not order:
+                # self.log.info('EXOGENOUS ORDER #%d for %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
+                instrument = self._instruments.get(msg['product_id'])
+                if instrument is None:
+                    self.log.error('Open order #%d for unknown instrument %s', msg.orderId,
+                                   instrument_tuple_from_contract(msg.contract))
+                    return
+                else:
+                    order = Order(_id=str(msg['id']),
+                                  instrument=self._instruments.get(str(msg['product_id'])),
+                                  price=float(msg['price']),
+                                  quantity= float(msg['remaining_size']) if  msg["side"] == "buy" else -float(msg['remaining_size']),
+                                  filled=0,
+                                  open=True,
+                                  cancelled=False)
+                    _created_at = ciso8601.parse_datetime(msg['created_at'])
+                    created_at = time.mktime(_created_at.timetuple())
+                    order.open_time = created_at / 1000
+                    pass
+        else:
+            pass
         pass
     def _done(self, msg):
-
         if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
             print('my order .....')
             order = self._orders.get(msg['order_id'])
@@ -1092,16 +1035,16 @@ class GBroke:
                     self.log.error('Open order #%d for unknown instrument %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
                     return
                 else:
-                    # order = Order(_id=str(msg['id']),
-                    #               instrument=self._instruments.get(str(msg['product_id'])),
-                    #               price=float(msg['price']),
-                    #               quantity=float(msg['size']),
-                    #               filled=0,
-                    #               open=True,
-                    #               cancelled=False)
-                    # _created_at = ciso8601.parse_datetime(msg['created_at'])
-                    # created_at = time.mktime(_created_at.timetuple())
-                    # order.open_time = created_at / 1000
+                    order = Order(_id=str(msg['id']),
+                                  instrument=self._instruments.get(str(msg['product_id'])),
+                                  price=float(msg['price']),
+                                  quantity=float(msg['size']) if  msg["side"] == "buy" else -float(msg['size']),
+                                  filled= float(msg['size']),
+                                  open=True,
+                                  cancelled=True if msg['reason'] == 'canceled' else False)
+                    _created_at = ciso8601.parse_datetime(msg['created_at'])
+                    created_at = time.mktime(_created_at.timetuple())
+                    order.fill_time = created_at / 1000
                     pass
         else:
             pass
@@ -1126,7 +1069,6 @@ class GBroke:
             acc.add('bidsize', bidsize)
         else:
             pass
-
         lastprice = float(msg['price'])
         lastsize  = float(msg['size'])
         _lasttime  = ciso8601.parse_datetime(msg['time'])
@@ -1135,63 +1077,10 @@ class GBroke:
         acc.add('last', lastprice)
         acc.add('lastsize', lastsize)       # Ticumulator likes lastsize to come after last
         acc.add('lasttime', lasttime / 1000)
-        #acc.add('volume', 0.0)
 
-        #if msg.tickType == TickType.LAST_TIMESTAMP:
-        #    pass # RTVOLUME is faster, more accurate, and doesn't have dupes.
-            # acc.add('lasttime', int(msg.value))
-        # elif msg.tickType == TickType.RT_VOLUME:    # or msg.tickType == self.TICK_TYPE_RT_TRADE_VOLUME:       # RT Trade Volume still in beta I guess
-        #     # semicolon-separated string of:
-        #     # last trade price ; last trade size ; last trade time in epoch ms; total volume for the day (in lots (of 100 for stocks)) ; VWAP for the day ; single trade flag (True indicates the trade was filled by a single market maker; False indicates multiple market-makers helped fill the trade)
-        #     vals = msg.value.split(';')
-        #     if vals[0]:     # Sometimes price is the empty string (odd lots?); in this case size == 0 and volume doesn't change, so we skip it.  (I think this is what RT Trade Volume is supposed to fix?)
-        #         try:
-        #             lastprice, lastsize, lasttime, volume, vwap = map(float, vals[:5])
-        #         except ValueError as err:
-        #             self.log.warning("Error parsing RTVOLUME tickString '%s': %s", msg.value, str(err))
-        #             return
-        #         acc.add('last', lastprice)
-        #         acc.add('lastsize', lastsize)       # Ticumulator likes lastsize to come after last
-        #         acc.add('lasttime', lasttime / 1000)
-        #         acc.add('volume', volume)
-        # else:       # Unknown tickType
         return
     def _change(self, msg):
-       #print("------------------------------------------------------------------------change msg------------------------------------------------------------------- :",msg)
-       self.log.debug('STATE %s', msg['order_id'])
-       order = self._orders.get(msg['order_id'])
-       if not order:
-           self.log.info('EXOGENOUS ORDER #%d for %s', msg['order_id'])
-           instrument = self._instruments.get(msg['product_id'])
-           if instrument is None:
-               self.log.error('Open order #%d for unknown instrument %s',msg['product_id'],
-                              instrument)
-               return
-           else:
-               _order = GOrder()  # TODO
-               _order.m_action = msg['side'] #UPPER
-               _order.m_totalQuantity = abs(msg['new_size'])
-               _order.m_lmtPrice = msg['price']
-               order = self._orders[msg['product_id']] = Order._from_gb(_order, msg['product_id'], instrument) #TODO
-
-       assert order.id == msg.orderId
-       assert order.instrument._contract.m_symbol == msg.contract.m_symbol  # TODO: More thorough equality
-       if order.open_time is None:
-           order.open_time = time.time()
-       # possible status: Submitted Cancelled Filled Inactive
-       # if msg.orderState.m_status == 'Cancelled':
-       #     order.cancelled = True
-       #     order.open = False
-       # elif msg.orderState.m_status == 'Filled':  # Filled means completely filled
-       #     if order.open:  # Only log first of dupe msgs
-       #         self.log.info('COMPLETE %s avg price %f', order, order.avg_price)
-       #     order.open = False
-       #
-       # if msg.orderState.m_warningText:
-       #     warnText = msg.orderState.m_warningText.replace('\n', ' ')
-       #     self.log.warning('Order %d: %s', msg.orderId, warnText)
-       #     order.message = warnText
-
+       pass
        return
     # def _tickPrice(self, msg):
     #     """Called when market data tick prices change."""
@@ -1418,7 +1307,6 @@ class GBroke:
     #     """Called when TWS straight drops yo shizzle."""
     #     self.connected = False
     #     self._call_alert_handlers('Connection Closed')
-
     def _defaultHandler(self, msg):
         """Called when there is no other message handler for `msg`."""
         if self.verbose < 5:        # Don't log again if already logged in main handler

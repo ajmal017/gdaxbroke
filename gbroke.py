@@ -996,8 +996,6 @@ class GBroke:
     #
     #     self._call_tick_handlers(msg.tickerId, acc.peek())
     def _received(self, msg):
-        pass
-    def _open(self, msg):
         if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
             print('my order .....')
             order = self._orders.get(msg['order_id'])
@@ -1013,7 +1011,8 @@ class GBroke:
                     order = Order(_id=str(msg['id']),
                                   instrument=self._instruments.get(str(msg['product_id'])),
                                   price=float(msg['price']),
-                                  quantity= float(msg['remaining_size']) if  msg["side"] == "buy" else -float(msg['remaining_size']),
+                                  quantity=float(msg['remaining_size']) if msg["side"] == "buy" else -float(
+                                      msg['remaining_size']),
                                   filled=0,
                                   open=True,
                                   cancelled=False)
@@ -1025,31 +1024,32 @@ class GBroke:
         else:
             pass
         pass
+    def _open(self, msg):
+        pass
     def _done(self, msg):
         if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
             print('my order .....')
             order = self._orders.get(msg['order_id'])
-            if not order:
-                #self.log.info('EXOGENOUS ORDER #%d for %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
-                instrument = self._instruments.get(msg['product_id'])
-                if instrument is None:
-                    self.log.error('Open order #%d for unknown instrument %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
-                    return
-                else:
-                    order = Order(_id=str(msg['id']),
-                                  instrument=self._instruments.get(str(msg['product_id'])),
-                                  price=float(msg['price']),
-                                  quantity=float(msg['size']) if  msg["side"] == "buy" else -float(msg['size']),
-                                  filled= float(msg['size']),
-                                  open=False,
-                                  cancelled=True if msg['reason'] == 'canceled' else False)
-                    _created_at = ciso8601.parse_datetime(msg['created_at'])
-                    created_at = time.mktime(_created_at.timetuple())
-                    order.fill_time = created_at / 1000
-                    pass
-            self._call_order_handlers(order)
-        else:
-            pass
+            assert order != None
+            #self.log.info('EXOGENOUS ORDER #%d for %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
+            instrument = self._instruments.get(msg['product_id'])
+            if instrument is None:
+                self.log.error('Open order #%d for unknown instrument %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
+                return
+            else:
+                order = Order(_id=str(msg['id']),
+                              instrument=self._instruments.get(str(msg['product_id'])),
+                              price=float(msg['price']),
+                              quantity=float(msg['size']) if  msg["side"] == "buy" else -float(msg['size']),
+                              filled= float(msg['size']),
+                              open=False,
+                              cancelled=True if msg['reason'] == 'canceled' else False)
+                _created_at = ciso8601.parse_datetime(msg['created_at'])
+                created_at = time.mktime(_created_at.timetuple())
+                order.fill_time = created_at / 1000
+                pass
+        self._call_order_handlers(order)
+
 
     def _active(self,msg):
         pass
@@ -1079,6 +1079,29 @@ class GBroke:
         acc.add('last', lastprice)
         acc.add('lastsize', lastsize)       # Ticumulator likes lastsize to come after last
         acc.add('lasttime', lasttime / 1000)
+
+        ####################################################################################
+        if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
+            print('my order .....')
+            order = self._orders.get(msg['taker_order_id']) if not self._orders.get(msg['taker_order_id']) else self._orders.get(msg['maker_order_id']) #TODOOOOOO
+            assert order != None
+
+            instrument = self._instruments.get(msg['product_id'])
+            if instrument is None:
+                self.log.error('Open order #%d for unknown instrument %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
+                return
+            else:
+
+                if order.quantity >= 0 :#buy
+                    order.filled -= float(msg['size'])
+                else:
+                    order.filled += float(msg['size'])
+
+                _created_at = ciso8601.parse_datetime(msg['created_at'])
+                created_at = time.mktime(_created_at.timetuple())
+                order.fill_time = created_at / 1000
+            self._call_order_handlers(order)
+
         return
     def _change(self, msg):
        pass

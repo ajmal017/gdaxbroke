@@ -426,7 +426,7 @@ class GBroke:
         self.log_positions()
         self.log_open_orders()
 
-    def get_instrument(self, symbol: Union[str, ContractTuple, int, Instrument], sec_type: str = 'STK', exchange: str = 'SMART', currency: str = 'USD', expiry: Optional[str] = None, strike: float = 0.0, opt_type: Optional[str] = None) -> Instrument:
+    def get_instrument(self, symbol: Union[str, ContractTuple, int, Instrument], sec_type: str = 'STK', exchange: str = 'GDAX', currency: str = 'USD', expiry: Optional[str] = None, strike: float = 0.0, opt_type: Optional[str] = None) -> Instrument:
         """Return an :class:`Instrument` object defining what will be purchased, at which exchange and in which currency.
 
             (symbol, sec_type, exchange, currency, expiry, strike, opt_type)
@@ -537,7 +537,8 @@ class GBroke:
                 self.context._handle_message(msg)
             def on_close(self):
                 print("-- Goodbye! --")
-                self.context.connected = False  # TODO
+                self.connected = False
+                self._call_alert_handlers('Disconnect')
 
         assert bar_type in ('time', 'tick')
         assert bar_size > 0
@@ -828,7 +829,6 @@ class GBroke:
         self.connected = False
         self._conn.close()
 
-
     def _next_order_id(self):
         """Increment the internal order id counter and return it."""
         self.__next_order_id += 1
@@ -1021,6 +1021,7 @@ class GBroke:
                     created_at = time.mktime(_created_at.timetuple())
                     order.open_time = created_at / 1000
                     pass
+            self._call_order_handlers(order)
         else:
             pass
         pass
@@ -1040,12 +1041,13 @@ class GBroke:
                                   price=float(msg['price']),
                                   quantity=float(msg['size']) if  msg["side"] == "buy" else -float(msg['size']),
                                   filled= float(msg['size']),
-                                  open=True,
+                                  open=False,
                                   cancelled=True if msg['reason'] == 'canceled' else False)
                     _created_at = ciso8601.parse_datetime(msg['created_at'])
                     created_at = time.mktime(_created_at.timetuple())
                     order.fill_time = created_at / 1000
                     pass
+            self._call_order_handlers(order)
         else:
             pass
 
@@ -1077,7 +1079,6 @@ class GBroke:
         acc.add('last', lastprice)
         acc.add('lastsize', lastsize)       # Ticumulator likes lastsize to come after last
         acc.add('lasttime', lasttime / 1000)
-
         return
     def _change(self, msg):
        pass
@@ -1454,7 +1455,7 @@ def now() -> datetime:
     return datetime.utcnow().replace(tzinfo=utc)
 
 
-def make_contract(symbol, sec_type='STK', exchange='SMART', currency='USD', expiry=None, strike=0.0, opt_type=None):
+def make_contract(symbol, sec_type='STK', exchange='GDAX', currency='USD', expiry=None, strike=0.0, opt_type=None):
     """:Return: an (unvalidated, no conID) IB Contract object with the given parameters."""
     contract = Contract()
     contract.m_symbol = symbol
@@ -1592,7 +1593,7 @@ def main():
     def on_alert(instrument, alert):
         print('ALERT {}: {}'.format(instrument, alert))
 
-    ib = IBroke(verbose=4)
+    ib = GBroke(verbose=4)
     #inst = ib.get_instrument("AAPL"); max_quantity = 200
     #inst = ib.get_instrument('EUR', 'CASH', 'IDEALPRO'); max_quantity = 20000
     inst = ib.get_instrument("ES", "FUT", "GLOBEX"); max_quantity = 1

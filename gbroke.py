@@ -1005,6 +1005,7 @@ class GBroke:
                 if instrument is None:
                     self.log.error('Open order #%d for unknown instrument %s', msg.orderId,
                                    instrument_tuple_from_contract(msg.contract))
+                    print("return for not instrument")
                     return
                 else:
                     size = 0.0
@@ -1029,7 +1030,7 @@ class GBroke:
                     _created_at = ciso8601.parse_datetime(msg['time'])
                     created_at = time.mktime(_created_at.timetuple())
                     order.open_time = created_at / 1000
-                    pass
+                    self._orders[order.order_id] = order
             self._call_order_handlers(order)
         else:
             pass
@@ -1094,6 +1095,8 @@ class GBroke:
         if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
             print('my order .....')
             order = self._orders.get(msg['taker_order_id']) if self._orders.get(msg['taker_order_id']) else self._orders.get(msg['maker_order_id']) #TODOOOOOO
+            print(self._orders.get(msg['taker_order_id']),msg['taker_order_id'])
+            print(self._orders.get(msg['maker_order_id']),msg['maker_order_id'])
             assert order != None
 
             instrument = self._instruments.get(msg['product_id'])

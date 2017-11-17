@@ -1010,7 +1010,7 @@ class GBroke:
                 else:
                     order = Order(_id=str(msg['order_id']),
                                   instrument=self._instruments.get(str(msg['product_id'])),
-                                  price=float(msg['price']),
+                                  price=float(msg['price']) if msg['order_type'] == 'limit'else 0.0,
                                   quantity=float(msg['remaining_size']) if msg["side"] == "buy" else -float(
                                       msg['remaining_size']),
                                   filled=0,

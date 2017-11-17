@@ -1007,11 +1007,23 @@ class GBroke:
                                    instrument_tuple_from_contract(msg.contract))
                     return
                 else:
+
+                    size = 0.0
+                    if  msg['order_type'] == 'limit':
+                        if msg['side'] == 'buy':
+                            size = float(msg['price'])
+                        else:
+                            size -= float(msg['price'])
+                    else:
+                        if msg['side'] == 'buy':
+                            size = float(msg['funds'])
+                        else:
+                            size -= float(msg['funds'])
+
                     order = Order(_id=str(msg['order_id']),
                                   instrument=self._instruments.get(str(msg['product_id'])),
                                   price=float(msg['price']) if msg['order_type'] == 'limit'else 0.0,
-                                  quantity=float(msg['remaining_size']) if msg["side"] == "buy" else -float(
-                                      msg['remaining_size']),
+                                  quantity= size,
                                   filled=0,
                                   open=True,
                                   cancelled=False)
@@ -1082,7 +1094,7 @@ class GBroke:
         ####################################################################################
         if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
             print('my order .....')
-            order = self._orders.get(msg['taker_order_id']) if not self._orders.get(msg['taker_order_id']) else self._orders.get(msg['maker_order_id']) #TODOOOOOO
+            order = self._orders.get(msg['taker_order_id']) if self._orders.get(msg['taker_order_id']) else self._orders.get(msg['maker_order_id']) #TODOOOOOO
             assert order != None
 
             instrument = self._instruments.get(msg['product_id'])

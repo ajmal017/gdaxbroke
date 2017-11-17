@@ -1026,7 +1026,7 @@ class GBroke:
                                   filled=0,
                                   open=True,
                                   cancelled=False)
-                    _created_at = ciso8601.parse_datetime(msg['created_at'])
+                    _created_at = ciso8601.parse_datetime(msg['time'])
                     created_at = time.mktime(_created_at.timetuple())
                     order.open_time = created_at / 1000
                     pass

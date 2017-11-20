@@ -1,5 +1,7 @@
+# -*- coding: utf-8 -*-
+
 """
-Setup for IBroke.
+Setup for GBroke.
 """
 
 from setuptools import setup
@@ -16,8 +18,8 @@ except (IOError, ImportError):
 
 def find_version(*file_paths):
     """:Return: the __version__ string from the path components `file_paths`."""
-    with open(os.path.join(os.path.dirname(__file__), *file_paths)) as verfile:
-        file_contents = verfile.read()
+    with open(os.path.join(os.path.dirname(__file__), *file_paths),'rb') as verfile:
+        file_contents = verfile.read().decode('utf-8')
     version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]", file_contents, re.M)
     if version_match:
         return version_match.group(1)
@@ -28,8 +30,8 @@ setup(
     version=find_version('gbroke.py'),
     description='Interactive Brokers for Humans',
     long_description=long_description,
-    url='https://gitlab.com/doctorj/ibroke',
-    author='Doctor J',
+    url='https://github.com/kanghua309/gdaxbroke',
+    author='kanghua',
     license='LGPL-3.0+',
     classifiers=[
         'Development Status :: 3 - Alpha',

@@ -309,7 +309,7 @@ class Order:
             id=self.id, inst=inst, filled=self.filled, quantity=self.quantity, price=self.price, open='open' if self.open else 'closed', cancelled=' cancelled' if self.cancelled else '')
 
 
-Bar = namedtuple('Bar', ('time', 'bid', 'bidsize', 'ask', 'asksize', 'last', 'lastsize', 'lasttime', 'open', 'high', 'low', 'close', 'vwap', 'volume', 'open_interest'))
+Bar = namedtuple('Bar', ('time', 'bid', 'bidsize', 'ask', 'asksize', 'last', 'lastsize', 'lasttime', 'open', 'high', 'low', 'close', 'vwap', 'volume', 'open_interest', 'bid_depth', 'ask_depth'))
 Bar.__doc__ = """
 Bar is the usual open / high / low / close trade prices you are probably familiar with from stock quotes,
 plus the most recent bid, ask and trade prices, and the volume-weighted average trade price over the period.
@@ -1418,7 +1418,7 @@ class Ticumulator:
     `volume` is total cumulative volume for the day.  For US stocks, it is divided by 100.
     """
     #: 'what' inputs to `add()`
-    INPUT_FIELDS = ('time', 'bid', 'bidsize', 'ask', 'asksize', 'last', 'lastsize', 'lasttime', 'volume', 'open_interest','bid_depth','ask_depth')
+    INPUT_FIELDS = ('time', 'bid', 'bidsize', 'ask', 'asksize', 'last', 'lastsize', 'lasttime', 'volume', 'open_interest', 'bid_depth', 'ask_depth')
 
     def __init__(self):
         # Input
@@ -1497,7 +1497,7 @@ class Ticumulator:
 
         .. seealso:: :class:`Bar`
         """
-        return time.time(), self.bid, self.bidsize, self.ask, self.asksize, self.last, self.lastsize, self.lasttime, self.open, self.high, self.low, self.close, self.vwap, self.volume, self.open_interest
+        return time.time(), self.bid, self.bidsize, self.ask, self.asksize, self.last, self.lastsize, self.lasttime, self.open, self.high, self.low, self.close, self.vwap, self.volume, self.open_interest ,self.bid_depth , self.ask_depth
 
 
 class RecurringTask(threading.Thread):

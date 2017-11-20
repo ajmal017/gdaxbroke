@@ -31,6 +31,7 @@ setup(
     description='Interactive Brokers for Humans',
     long_description=long_description,
     url='https://github.com/kanghua309/gdaxbroke',
+    download_url='https://github.com/kanghua309/gdaxbroke/archive/master.zip',
     author='kanghua',
     license='LGPL-3.0+',
     classifiers=[

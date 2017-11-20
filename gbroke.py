@@ -597,7 +597,6 @@ class GBroke:
 
     def watch_bookorder(self, instrument: Union[str, ContractTuple, int, Instrument]):
         class OrderBookConsole(gdax.OrderBook):
-
             ''' Logs real-time changes to the bid-ask spread to the console '''
             def __init__(self,context,url,product_id=None):
                 super(OrderBookConsole, self).__init__(url = url,product_id=product_id)
@@ -714,6 +713,7 @@ class GBroke:
 
         Bracket orders (with `target`) don't really make sense here.
         """
+        print("target:",quantity,self.get_position(instrument))
         return self.order(instrument, quantity - self.get_position(instrument), limit=limit, stop=stop)
 
     def get_position(self, instrument):

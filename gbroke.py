@@ -533,14 +533,13 @@ class GBroke:
                 print("Let's count the messages!")
 
             def on_message(self, msg):
-                print(json.dumps(msg, indent=4, sort_keys=True))
                 self.message_count += 1
                 self.context.connected = True  # TODO
                 self.context._handle_message(msg)
             def on_close(self):
                 print("-- Goodbye! --")
                 self.connected = False
-                self._call_alert_handlers('Disconnect')
+                self.context._call_alert_handlers('Disconnect')
 
         assert bar_type in ('time', 'tick')
         assert bar_size > 0
@@ -612,7 +611,7 @@ class GBroke:
             def on_message(self, message):
 
                 super(OrderBookConsole, self).on_message(message)
-                print("bookorder message:",message)
+                #print("bookorder message:",message)
                 # Calculate newest bid-ask spread
                 bid = self.get_bid()
                 bids = self.get_bids(bid)
@@ -943,7 +942,7 @@ class GBroke:
         """Root message handler, dispatches to methods named `_typeName`.
         E.g., `tickString` messages are dispatched to `self._tickString()`.
         """
-        print(msg)
+        #print(msg)
         if self.verbose >= 5:
             self.log.debug('MSG %s', str(msg))
         #name = getattr(msg, 'typeName', None)

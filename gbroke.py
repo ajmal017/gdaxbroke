@@ -373,7 +373,7 @@ class GBroke:
     #RT_TRADE_VOLUME = "375"
     #TICK_TYPE_RT_TRADE_VOLUME = 77
 
-    def __init__(self,host='wss://ws-feed-public.sandbox.gdax.com',client_id=None, timeout_sec=5, verbose=3):
+    def __init__(self,wsurl = 'wss://ws-feed-public.sandbox.gdax.com',posturl = 'https://api-public.sandbox.gdax.com', client_id=None, timeout_sec=5, verbose=3):
         """Connect to Interactive Brokers.
 
         :param int client_id: An integer identifying which API client made an order.  In order to report
@@ -403,8 +403,9 @@ class GBroke:
         self.timeout_sec = timeout_sec
         self.connected = None                       # Tri-state: None -> never been connected, False: initially was connected but not now, True: connected
         #############################################################################
-        self.host = host
-        self.public_client    = gdax.PublicClient()
+        self.wsurl = wsurl
+        self.posturl = posturl
+        self.public_client    = gdax.PublicClient(api_url = self.posturl)
         print ("time .....",float(self.public_client.get_time()['epoch'])-time.time())
         ts = self.public_client.get_time()['epoch']
         _date = time.strftime('%Y-%m-%d', time.localtime(ts))
@@ -414,7 +415,7 @@ class GBroke:
         self.auth_client = gdax.AuthenticatedClient(key        = APK_KEY,
                                                     b64secret  = API_SECRET,
                                                     passphrase = API_PASSPHRASE,
-                                                    api_url    = "https://api-public.sandbox.gdax.com")
+                                                    api_url    =  self.posturl)
         if not self.auth_client:
             raise RuntimeError('Error connecting to IB')
         print("You has connected sandbox gdx ")
@@ -532,7 +533,7 @@ class GBroke:
                 print("Let's count the messages!")
 
             def on_message(self, msg):
-                # print(json.dumps(msg, indent=4, sort_keys=True))
+                print(json.dumps(msg, indent=4, sort_keys=True))
                 self.message_count += 1
                 self.context.connected = True  # TODO
                 self.context._handle_message(msg)
@@ -558,8 +559,7 @@ class GBroke:
                 self._ticumulators[instrument.id] = Ticumulator()
 
                 #self._conn.reqMktData(instrument.id, instrument._contract, self.RTVOLUME, snapshot=False)       # Subscribe to continuous updates
-                print(self.host,instrument.symbol)
-                self._conn = WSClient(self,url=self.host,products=instrument.symbol) #product 哪里给定？
+                self._conn = WSClient(self,url=self.wsurl,products=instrument.symbol) #product 哪里给定？
                 #self._conn.initialize(self)
                 self._conn.start()
                 print("start ......... ")
@@ -599,8 +599,8 @@ class GBroke:
         class OrderBookConsole(gdax.OrderBook):
 
             ''' Logs real-time changes to the bid-ask spread to the console '''
-            def __init__(self,context,product_id=None):
-                super(OrderBookConsole, self).__init__(product_id=product_id)
+            def __init__(self,context,url,product_id=None):
+                super(OrderBookConsole, self).__init__(url = url,product_id=product_id)
 
                 # latest values of bid-ask spread
                 self._bid = None
@@ -613,7 +613,7 @@ class GBroke:
             def on_message(self, message):
 
                 super(OrderBookConsole, self).on_message(message)
-
+                print("bookorder message:",message)
                 # Calculate newest bid-ask spread
                 bid = self.get_bid()
                 bids = self.get_bids(bid)
@@ -631,13 +631,13 @@ class GBroke:
                     self._ask = ask
                     self._bid_depth = bid_depth
                     self._ask_depth = ask_depth
-                    print('{} {} bid: {:.3f} @ {:.2f}\task: {:.3f} @ {:.2f}'.format(
-                        dt.datetime.now(), self.product_id, bid_depth, bid, ask_depth, ask))
+                    #print('{} {} bid: {:.3f} @ {:.2f}\task: {:.3f} @ {:.2f}'.format(
+                    #    dt.datetime.now(), self.product_id, bid_depth, bid, ask_depth, ask))
                     acc = self._context._ticumulators.get(self._product_id)
                     acc.add('bid_depth',bid_depth)
                     acc.add('ask_depth',ask_depth)
 
-        order_book = OrderBookConsole(self,product_id=instrument.id)
+        order_book = OrderBookConsole(self,url = self.wsurl,product_id=instrument.id)
         order_book.start()
         # try:
         #     while True:

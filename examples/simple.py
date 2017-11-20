@@ -7,7 +7,7 @@ def on_bar(instrument, bar):
     """Called every second with market data `bar` namedtuple."""
     print(instrument.symbol, bar)
 
-gb = GBroke()       # Connects to a locally running TWS on port 7497 by default
+gb = GBroke(wsurl = 'wss://ws-feed-public.sandbox.gdax.com')       # Connects to a locally running TWS on port 7497 by default
 instrument = gb.register("BTC-USD", on_bar, bar_size=1)     # Call `on_bar()` every 1 second with Bar namedtuple for Apple stock
 print ("instrucment:",instrument)
 

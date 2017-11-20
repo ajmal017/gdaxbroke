@@ -36,6 +36,7 @@ import unittest
 
 import gdax
 import json
+import datetime as dt
 
 #from ib.opt import ibConnection
 #from ib.ext.Contract import Contract
@@ -594,6 +595,60 @@ class GBroke:
 
         return instrument
 
+    def watch_bookorder(self, instrument: Union[str, ContractTuple, int, Instrument]):
+        class OrderBookConsole(gdax.OrderBook):
+
+            ''' Logs real-time changes to the bid-ask spread to the console '''
+            def __init__(self,context,product_id=None):
+                super(OrderBookConsole, self).__init__(product_id=product_id)
+
+                # latest values of bid-ask spread
+                self._bid = None
+                self._ask = None
+                self._bid_depth = None
+                self._ask_depth = None
+                self._context = context
+                self._product_id = product_id
+
+            def on_message(self, message):
+
+                super(OrderBookConsole, self).on_message(message)
+
+                # Calculate newest bid-ask spread
+                bid = self.get_bid()
+                bids = self.get_bids(bid)
+                bid_depth = sum([b['size'] for b in bids])
+                ask = self.get_ask()
+                asks = self.get_asks(ask)
+                ask_depth = sum([a['size'] for a in asks])
+
+                if self._bid == bid and self._ask == ask and self._bid_depth == bid_depth and self._ask_depth == ask_depth:
+                    # If there are no changes to the bid-ask spread since the last update, no need to print
+                    pass
+                else:
+                    # If there are differences, update the cache
+                    self._bid = bid
+                    self._ask = ask
+                    self._bid_depth = bid_depth
+                    self._ask_depth = ask_depth
+                    print('{} {} bid: {:.3f} @ {:.2f}\task: {:.3f} @ {:.2f}'.format(
+                        dt.datetime.now(), self.product_id, bid_depth, bid, ask_depth, ask))
+                    acc = self._context._ticumulators.get(self._product_id)
+                    acc.add('bid_depth',bid_depth)
+                    acc.add('ask_depth',ask_depth)
+
+        order_book = OrderBookConsole(self,product_id=instrument.id)
+        order_book.start()
+        # try:
+        #     while True:
+        #         time.sleep(10)
+        # except KeyboardInterrupt:
+        #     order_book.close()
+        # if order_book.error:
+        #     sys.exit(1)
+        # else:
+        #     sys.exit(0)
+
     def order(self, instrument: Instrument, quantity: int, limit: float = 0.0, stop: float = 0.0, target: float = 0.0) -> Optional[Order]:
         """Place an order and return an Order object, or None if no order was made.
 
@@ -891,12 +946,10 @@ class GBroke:
         print(msg)
         if self.verbose >= 5:
             self.log.debug('MSG %s', str(msg))
-
         #name = getattr(msg, 'typeName', None)
         #name = getattr(msg, 'type', None)
         name = msg["type"]
         #print("debug msg:",msg)
-
         if not name or not name.isidentifier():
             self.log.error('Invalid message name %s', name)
             return
@@ -1365,7 +1418,7 @@ class Ticumulator:
     `volume` is total cumulative volume for the day.  For US stocks, it is divided by 100.
     """
     #: 'what' inputs to `add()`
-    INPUT_FIELDS = ('time', 'bid', 'bidsize', 'ask', 'asksize', 'last', 'lastsize', 'lasttime', 'volume', 'open_interest')
+    INPUT_FIELDS = ('time', 'bid', 'bidsize', 'ask', 'asksize', 'last', 'lastsize', 'lasttime', 'volume', 'open_interest','bid_depth','ask_depth')
 
     def __init__(self):
         # Input
@@ -1384,6 +1437,8 @@ class Ticumulator:
         self.high = float('NaN')
         self.low = float('NaN')
         self.close = float('NaN')
+        self.bid_depth = float('Nan')
+        self.ask_depth = float('Nan')
         self.sum_last = 0.0     # For VWAP
         self.sum_vol = 0.0
 

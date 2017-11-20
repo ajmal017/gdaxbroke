@@ -10,9 +10,11 @@ def on_bar(instrument, bar):
 gb = GBroke()       # Connects to a locally running TWS on port 7497 by default
 instrument = gb.register("BTC-USD", on_bar, bar_size=1)     # Call `on_bar()` every 1 second with Bar namedtuple for Apple stock
 print ("instrucment:",instrument)
-sleep(10)
 
-gb.order_target(instrument,0.01)
+gb.watch_bookorder(instrument)
+#sleep(10)
+
+#gb.order_target(instrument,0.01)
 
 print('pos:',gb.get_position(instrument))
 sleep(10000)

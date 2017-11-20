@@ -43,7 +43,10 @@ setup(
     ],
     keywords='interactive brokers tws api finance trading',
     py_modules=['gbroke'],
-    install_requires=['pytz', 'gdax'],
+    install_requires=['pytz', 'ciso8601'],
+    dependency_links=[
+        'git+git://github.com/kanghua309/gdax-python/archive/master.zip#egg=private-gdax',
+    ],
     extras_require={'dev': ['pypandoc'],},
     package_data={},
 )

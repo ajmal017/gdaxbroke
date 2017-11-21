@@ -831,17 +831,17 @@ class GBroke:
             position = self.auth_client.get_position()
             print("-----------pos:",position)
             if 'BTC' in position['accounts']:
-               balance = position['accounts']['BTC']['balance']
+               balance = float(position['accounts']['BTC']['balance'])
             else:
                balance = 0
             self._positions["BTC-USD"] = balance
             if 'LTC' in position['accounts']:
-                balance =  position['accounts']['LTC']['balance']
+                balance =  float(position['accounts']['LTC']['balance'])
             else:
                 balance = 0
             self._positions["LTC-USD"] = balance
             if 'USD' in position['accounts']:
-                balance =  position['accounts']['USD']['balance']
+                balance =  float(position['accounts']['USD']['balance'])
             else:
                 balance = 0
             self._positions['USD'] = balance

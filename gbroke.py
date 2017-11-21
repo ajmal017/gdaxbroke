@@ -634,6 +634,10 @@ class GBroke:
                     acc = self._context._ticumulators.get(self._product_id)
                     acc.add('bid_depth',bid_depth)
                     acc.add('ask_depth',ask_depth)
+                    acc.add('bid',bid['price'])
+                    acc.add('ask',ask['price'])
+                    acc.add('bidsize',bid['size'])
+                    acc.add('asksize',ask['size'])
 
         order_book = OrderBookConsole(self,url = self.wsurl,product_id=instrument.id)
         order_book.start()
@@ -826,18 +830,18 @@ class GBroke:
             #float(latest_trade[0]['price'])
             position = self.auth_client.get_position()
             print("-----------pos:",position)
-            if 'BTC' in position:
-               balance = position['BTC']['balance']
+            if 'BTC' in position['accounts']:
+               balance = position['accounts']['BTC']['balance']
             else:
                balance = 0
             self._positions["BTC-USD"] = balance
-            if 'LTC' in position:
-                balance = position['LTC']['balance']
+            if 'LTC' in position['accounts']:
+                balance =  position['accounts']['LTC']['balance']
             else:
                 balance = 0
             self._positions["LTC-USD"] = balance
-            if 'USD' in position:
-                balance = position['USD']['balance']
+            if 'USD' in position['accounts']:
+                balance =  position['accounts']['USD']['balance']
             else:
                 balance = 0
             self._positions['USD'] = balance
@@ -876,8 +880,8 @@ class GBroke:
     #
     def log_positions(self):
         """Log positions at INFO."""
-        for inst, pos, cost in self.get_positions():
-            self.log.info('POSITION %d @ %s', pos, inst)
+        for inst, pos in self.get_positions():
+            self.log.info('POSITION %s @ %s', pos, inst)
     #
     def log_open_orders(self):
         """Log open orders at INFO."""
@@ -1133,19 +1137,19 @@ class GBroke:
         if acc is None:
             self.log.warning('No Ticumulator found for ticker id %d', msg['tickerId'])
             return
-
-        if msg['side'] == 'buy':
-            ask = float(msg['price'])
-            asksize = float(msg['size'])
-            acc.add('ask', ask)
-            acc.add('asksize',asksize)
-        elif msg['side'] == 'sell':
-            bid = float(msg['price'])
-            bidsize = float(msg['size'])
-            acc.add('bid', bid)
-            acc.add('bidsize', bidsize)
-        else:
-            pass
+        print(msg) #TODO
+        # if msg['side'] == 'buy':
+        #     ask = float(msg['price'])
+        #     asksize = float(msg['size'])
+        #     acc.add('ask', ask)
+        #     acc.add('asksize',asksize)
+        # elif msg['side'] == 'sell':
+        #     bid = float(msg['price'])
+        #     bidsize = float(msg['size'])
+        #     acc.add('bid', bid)
+        #     acc.add('bidsize', bidsize)
+        # else:
+        #     pass
         lastprice = float(msg['price'])
         lastsize  = float(msg['size'])
         _lasttime  = ciso8601.parse_datetime(msg['time'])
@@ -1476,6 +1480,7 @@ class Ticumulator:
 
         # For vwap.  We arrange that lastsize comes in after the corresponding last price, since we get both from RTVOLUME.
         if what == 'lastsize':
+            print('==========================',self.last,self.lastsize,self.lastsize)
             self.sum_last += self.last * self.lastsize      # self.lastsize == value, having been set above
             self.sum_vol += self.lastsize
 

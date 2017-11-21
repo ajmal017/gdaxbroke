@@ -631,13 +631,14 @@ class GBroke:
                     self._ask_depth = ask_depth
                     #print('{} {} bid: {:.3f} @ {:.2f}\task: {:.3f} @ {:.2f}'.format(
                     #    dt.datetime.now(), self.product_id, bid_depth, bid, ask_depth, ask))
+                    print("#########################################################",float(bid),float(ask),self.get_bid(bid),self.get_ask(ask))
                     acc = self._context._ticumulators.get(self._product_id)
                     acc.add('bid_depth',bid_depth)
                     acc.add('ask_depth',ask_depth)
-                    acc.add('bid',bid['price'])
-                    acc.add('ask',ask['price'])
-                    acc.add('bidsize',bid['size'])
-                    acc.add('asksize',ask['size'])
+                    acc.add('bid',float(bid))
+                    acc.add('ask',float(ask))
+                    acc.add('bidsize',float(self.get_bid(bid)[-1]['size'] if bid_depth > 0.0 else 0.0))
+                    acc.add('asksize',float(self.get_ask(ask)[-1]['size'] if ask_depth > 0.0 else 0.0))
 
         order_book = OrderBookConsole(self,url = self.wsurl,product_id=instrument.id)
         order_book.start()

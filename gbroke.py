@@ -631,7 +631,7 @@ class GBroke:
                     self._ask_depth = ask_depth
                     #print('{} {} bid: {:.3f} @ {:.2f}\task: {:.3f} @ {:.2f}'.format(
                     #    dt.datetime.now(), self.product_id, bid_depth, bid, ask_depth, ask))
-                    print("#########################################################",float(bid),float(ask),self.get_bid(bid),self.get_ask(ask))
+                    #print("#########################################################",float(bid),float(ask),self.get_bid(bid),self.get_ask(ask))
                     acc = self._context._ticumulators.get(self._product_id)
                     acc.add('bid_depth',bid_depth)
                     acc.add('ask_depth',ask_depth)

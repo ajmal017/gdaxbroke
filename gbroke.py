@@ -405,6 +405,8 @@ class GBroke:
         #############################################################################
         self.wsurl = wsurl
         self.posturl = posturl
+        print(wsurl)
+        print(posturl)
         self.public_client    = gdax.PublicClient(api_url = self.posturl)
         print ("time .....",float(self.public_client.get_time()['epoch'])-time.time())
         ts = self.public_client.get_time()['epoch']
@@ -632,14 +634,17 @@ class GBroke:
                     #print('{} {} bid: {:.3f} @ {:.2f}\task: {:.3f} @ {:.2f}'.format(
                     #    dt.datetime.now(), self.product_id, bid_depth, bid, ask_depth, ask))
                     #print("#########################################################",float(bid),float(ask),self.get_bid(bid),self.get_ask(ask))
-                    acc = self._context._ticumulators.get(self._product_id)
-                    acc.add('bid_depth',bid_depth)
-                    acc.add('ask_depth',ask_depth)
-                    acc.add('bid',float(bid))
-                    acc.add('ask',float(ask))
-                    acc.add('bidsize',float(self.get_bid(bid)[-1]['size'] if bid_depth > 0.0 else 0.0))
-                    acc.add('asksize',float(self.get_ask(ask)[-1]['size'] if ask_depth > 0.0 else 0.0))
+                acc = self._context._ticumulators.get(self._product_id)
+                acc.add('bid_depth',float(bid_depth))
+                acc.add('ask_depth',float(ask_depth))
+                #print("===============bid:",bid,bid['price'])
+                acc.add('bid',float(bid))
+                acc.add('ask',float(ask))
 
+                #print('$$$$:',type(bid),bid,bids[-1]['size'])
+                acc.add('bidsize',float(bids[-1]['size']) if bid_depth > 0.0 else 0.0)
+                acc.add('asksize',float(asks[-1]['size']) if ask_depth > 0.0 else 0.0)
+        #print("order book start :",self.wsurl)
         order_book = OrderBookConsole(self,url = self.wsurl,product_id=instrument.id)
         order_book.start()
         # try:
@@ -1481,7 +1486,7 @@ class Ticumulator:
 
         # For vwap.  We arrange that lastsize comes in after the corresponding last price, since we get both from RTVOLUME.
         if what == 'lastsize':
-            print('==========================',self.last,self.lastsize,self.lastsize)
+            print('==========================lastsize',self.last,self.lastsize,self.lastsize)
             self.sum_last += self.last * self.lastsize      # self.lastsize == value, having been set above
             self.sum_vol += self.lastsize
 

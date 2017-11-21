@@ -83,9 +83,9 @@ InstrumentDefaults = namedtuple('InstrumentDefaults', 'symbol sec_type exchange 
 #: Default values for instrument fields
 INSTRUMENT_DEFAULTS = InstrumentDefaults(None, 'STK', 'GDAX', 'USD', None, 0.0, None)
 
-APK_KEY = '88cec4ec5adbafa9412b4bdb57a51af6'
-API_SECRET  = 'ARF3RXbnDD4ukc9/GyNod+FDWcwG8anlMUBy63mk2DP1g6sxyj4GZGP5eQO1LA3DP0pc3a3Io8cHihf28Qgj+Q=='
-API_PASSPHRASE  = 'trewtwr'
+APK_KEY = 'e3036b550256e7e2109e0df5890a094e'
+API_SECRET  = 'uUhYDvydBRqhptUnYLZ3Xzy0Ln2OHygRoRGZ55iqIRMuODQbPI4d3Wc+z16Bdcq7TRcIGtgS/ySEpCDP8klq0w=='
+API_PASSPHRASE  = 'fdsafdasfsda'
 
 
 
@@ -781,7 +781,7 @@ class GBroke:
             if order.open and (instrument is None or order.instrument == instrument):
                 yield copy(order)
 
-    def reconcile(self):
+    def reconcile(self,fields = ['profile','position','orders']):
         """Refresh the local state of orders and positions with those from the server.
 
         Note: Orders and positions can change while this method is executing.  To be sure
@@ -793,75 +793,84 @@ class GBroke:
 
         Updates the next order id.
         """
-        self.log.debug('RECONCILE POSITIONS')
-        # if not self._reconcile_contract_requests.empty():
-        #     strays = tuple(iter_except(self._reconcile_contract_requests.get_nowait, Empty))
-        #     self.log.warning("reconcile() queue not empty: %s Attempt to call reconcile more than once concurrently?", strays)
-        # self._conn.reqPositions()               # generates _position() messages, which requests contract details and stuffs the request IDs into the _reconcile_contract_requests queue; positionEnd() stuffs a None
-        # # _position() itself will call _request_contract_details, and we wait on the results here.
-        # # Wait on all contractDetails request IDs to fill the queue, plus None from positionEnd; put into a tuple
-        # req_ids = tuple(iter_except(lambda: self._reconcile_contract_requests.get(timeout=self.timeout_sec), Empty))
-        # if not req_ids or req_ids[-1] is not None:
-        #     self.log.warning("reconcile() timed out waiting for positions; positions may be stale")
-        #
-        # for req_id in req_ids:
-        #     if req_id is not None:
-        #         try:
-        #             self._handle_contract_details(req_id)
-        #         except Exception as err:
-        #             self.log.error('In reconcile() for contract request %d: %s', req_id, str(err).replace('\n', ' '))
-        #TODO self._positions[inst_id] = (msg.pos, msg.avgCost / multiplier)
-        #latest_trade = self.public_client.get_product_trades("BTC-USD")
-        #print(latest_trade)
-        #float(latest_trade[0]['price'])
-        position = self.auth_client.get_position()
-        print("-----------pos:",position)
-        if 'BTC' in position:
-           balance = position['BTC']['balance']
-        else:
-           balance = 0
-        self._positions["BTC-USD"] = balance
-        if 'LTC' in position:
-            balance = position['LTC']['balance']
-        else:
-            balance = 0
-        self._positions["LTC-USD"] = balance
-        if 'USD' in position:
-            balance = position['USD']['balance']
-        else:
-            balance = 0
-        self._positions['USD'] = balance
 
-        self.user_id = position['user_id']
-        self.profile_id = position['profile_id']
-        print("user_id %s,profile_id:%s" % (self.user_id,self.profile_id))
+
+        if 'profile' in fields:
+            position = self.auth_client.get_position()
+            self.log.debug('RECONCILE PROFILE')
+            self.user_id = position['user_id']
+            self.profile_id = position['profile_id']
+            print("user_id %s,profile_id:%s" % (self.user_id, self.profile_id))
+
+        if 'position' in fields:
+            self.log.debug('RECONCILE POSITIONS')
+            # if not self._reconcile_contract_requests.empty():
+            #     strays = tuple(iter_except(self._reconcile_contract_requests.get_nowait, Empty))
+            #     self.log.warning("reconcile() queue not empty: %s Attempt to call reconcile more than once concurrently?", strays)
+            # self._conn.reqPositions()               # generates _position() messages, which requests contract details and stuffs the request IDs into the _reconcile_contract_requests queue; positionEnd() stuffs a None
+            # # _position() itself will call _request_contract_details, and we wait on the results here.
+            # # Wait on all contractDetails request IDs to fill the queue, plus None from positionEnd; put into a tuple
+            # req_ids = tuple(iter_except(lambda: self._reconcile_contract_requests.get(timeout=self.timeout_sec), Empty))
+            # if not req_ids or req_ids[-1] is not None:
+            #     self.log.warning("reconcile() timed out waiting for positions; positions may be stale")
+            #
+            # for req_id in req_ids:
+            #     if req_id is not None:
+            #         try:
+            #             self._handle_contract_details(req_id)
+            #         except Exception as err:
+            #             self.log.error('In reconcile() for contract request %d: %s', req_id, str(err).replace('\n', ' '))
+            #TODO self._positions[inst_id] = (msg.pos, msg.avgCost / multiplier)
+            #latest_trade = self.public_client.get_product_trades("BTC-USD")
+            #print(latest_trade)
+            #float(latest_trade[0]['price'])
+            position = self.auth_client.get_position()
+            print("-----------pos:",position)
+            if 'BTC' in position:
+               balance = position['BTC']['balance']
+            else:
+               balance = 0
+            self._positions["BTC-USD"] = balance
+            if 'LTC' in position:
+                balance = position['LTC']['balance']
+            else:
+                balance = 0
+            self._positions["LTC-USD"] = balance
+            if 'USD' in position:
+                balance = position['USD']['balance']
+            else:
+                balance = 0
+            self._positions['USD'] = balance
+
 
         # Get open orders second, since they may reference the instruments we just created above
-        self.log.debug('RECONCILE ORDERS')
-        # self._reconcile_open_orders_end.clear()
-        # self._conn.reqAllOpenOrders()
-        # if not self._reconcile_open_orders_end.wait(timeout=self.timeout_sec):
-        #     self.log.error('reconcile() timed out waiting for all open orders')
-        #
-        # self._conn.reqIds(-1)
-        os = self.auth_client.get_orders()
-        for product in os:
-            for msg in product:
-                print(msg)
-                order = Order(id_=str(msg['id']),
-                          instrument=self._instruments.get(str(msg['product_id'])),
-                          price=float(msg['price']),
-                          quantity=float(msg['size']) if msg["side"] == "buy" else -float(msg['size']),
-                          filled=float(msg['filled_size']),
-                          open=True,
-                          cancelled=False)
-                _created_at = ciso8601.parse_datetime(msg['created_at'])
-                created_at = time.mktime(_created_at.timetuple())
-                order.open_time = created_at / 1000
-                # o.fill_time =
-                # o.avg_price =
-                # o.profit    =
-                self._orders[order.order_id] = order
+        if 'orders' in fields:
+
+            self.log.debug('RECONCILE ORDERS')
+            # self._reconcile_open_orders_end.clear()
+            # self._conn.reqAllOpenOrders()
+            # if not self._reconcile_open_orders_end.wait(timeout=self.timeout_sec):
+            #     self.log.error('reconcile() timed out waiting for all open orders')
+            #
+            # self._conn.reqIds(-1)
+            os = self.auth_client.get_orders()
+            for product in os:
+                for msg in product:
+                    print(msg)
+                    order = Order(id_=str(msg['id']),
+                              instrument=self._instruments.get(str(msg['product_id'])),
+                              price=float(msg['price']),
+                              quantity=float(msg['size']) if msg["side"] == "buy" else -float(msg['size']),
+                              filled=float(msg['filled_size']),
+                              open=True,
+                              cancelled=False)
+                    _created_at = ciso8601.parse_datetime(msg['created_at'])
+                    created_at = time.mktime(_created_at.timetuple())
+                    order.open_time = created_at / 1000
+                    # o.fill_time =
+                    # o.avg_price =
+                    # o.profit    =
+                    self._orders[order.order_id] = order
 
         self.log.debug('RECONCILE END')
     #
@@ -1084,6 +1093,8 @@ class GBroke:
                     order.open_time = created_at / 1000
                     self._orders[order.order_id] = order
             self._call_order_handlers(order)
+            self.reconcile(['position'])
+
         else:
             pass
         pass
@@ -1112,6 +1123,7 @@ class GBroke:
                 order.fill_time = created_at / 1000
                 pass
             self._call_order_handlers(order)
+            self.reconcile(['position'])
 
 
     def _active(self,msg):
@@ -1166,6 +1178,7 @@ class GBroke:
                 created_at = time.mktime(_created_at.timetuple())
                 order.fill_time = created_at / 1000
             self._call_order_handlers(order)
+            self.reconcile(['position'])
 
         return
     def _change(self, msg):

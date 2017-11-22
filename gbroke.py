@@ -728,7 +728,7 @@ class GBroke:
 
         Bracket orders (with `target`) don't really make sense here.
         """
-        print("target:",quantity,self.get_position(instrument))
+        print("target qulitiy,pos:",quantity,self.get_position(instrument))
         return self.order(instrument, quantity - self.get_position(instrument), limit=limit, stop=stop)
 
     def get_position(self, instrument):

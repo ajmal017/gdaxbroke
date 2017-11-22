@@ -14,10 +14,10 @@ print ("instrucment:",instrument)
 pos = gb.get_position(instrument)
 print('pos:',pos)
 
-#gb.watch_bookorder(instrument)
+gb.watch_bookorder(instrument)
 sleep(10)
 
-gb.order_target(instrument,0.02)
+gb.order_target(instrument,0.01)
 
 print('pos:',gb.get_position(instrument))
 sleep(10000)

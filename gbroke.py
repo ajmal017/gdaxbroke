@@ -768,8 +768,8 @@ class GBroke:
         """
         # TODO: We might want to request all open orders, since our order status tracking might not be perfect.
         if hard_global_cancel:
-            if instrument is not None:
-                raise ValueError('instrument must be None for hard_global_cancel')
+            #if instrument is not None:
+            #    raise ValueError('instrument must be None for hard_global_cancel')
             self.log.info('GLOBAL CANCEL')
             #self._conn.reqGlobalCancel()
             self.auth_client.cancel_all(instrument.id)
@@ -793,6 +793,7 @@ class GBroke:
         """:Return: an iterable of all open orders, or only those for `instrument` if given."""
         for order in self._orders.values():
             if order.open and (instrument is None or order.instrument == instrument):
+                print("openorder .......,",order)
                 yield copy(order)
 
     def reconcile(self,fields = ['profile','position','orders']):

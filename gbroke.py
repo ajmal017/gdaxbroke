@@ -475,7 +475,7 @@ class GBroke:
         print("contract:",contract)
         inst = Instrument(self, contract)
         self._instruments[inst.id] = inst
-        self._positions.setdefault(inst.id, 0)  # ib.reqPositions() (called in reconcile()) only gives 0 positions for instruments traded recently, so we
+        self._positions.setdefault(inst.id, (0,None))  # ib.reqPositions() (called in reconcile()) only gives 0 positions for instruments traded recently, so we
         return inst
     # def _request_contract_details(self, contract):
     #     """Call reqContractDetails and stuff the results in ``self._contract_details[req_id]``, where `req_id` is the return value."""
@@ -702,20 +702,23 @@ class GBroke:
                                  #price=order.m_lmtPrice,  # USD  #TODO FOR STOP
                                  size=str(order.m_totalQuantity),  # BTC
                                  product_id=instrument.id)
-            print("res:",res) #TODO  https://api.coinbase.com/v2/time
+            print("============================order res:",res) #TODO  https://api.coinbase.com/v2/time
         elif order.m_action == 'SELL':
             res = self.auth_client.sell(#client_oid=order.m_orderId,
                                  type=order.m_orderType,
                                  #price=order.m_lmtPrice,  # USD  #TODO FOR STOP
                                  size=order.m_totalQuantity,  # BTC
                                  product_id=instrument.id)
-            print(res)
+            print("============================order res",res)
         else :
             pass
-        order_id = res['id']
-        if not self._orders.get(order_id):
-            self._orders[order_id] = Order._from_gb(order, order_id, instrument)
-        return copy(self._orders[order_id])
+        if 'id' in res:
+            order_id = res['id']
+            if not self._orders.get(order_id):
+                self._orders[order_id] = Order._from_gb(order, order_id, instrument)
+            return copy(self._orders[order_id])
+        else:
+            return None
     #
     def order_target(self, instrument, quantity, limit=0.0, stop=0.0):
         """Place orders as necessary to bring position in `instrument` to `quantity`.
@@ -731,13 +734,13 @@ class GBroke:
         if pos is None:
             self.log.warning('get_position() for unknown instrument {}'.format(instrument))
             return 0
-        return pos
+        return pos[0]
     #
     def get_positions(self):
         """:Return: an iterator of ``(instrument, position, avg_cost)`` tuples for any non-zero positions in this account."""
-        for inst_id, pos in self._positions.items():
+        for inst_id, (pos,avg_cost) in self._positions.items():
             if pos:
-                yield (self._instruments.get(inst_id), pos)
+                yield (self._instruments.get(inst_id), pos,avg_cost)
 
     def get_cost(self, instrument):
         """:Return: the average cost of currently held shares of `instrument`.  If no shares held, return None."""
@@ -745,7 +748,7 @@ class GBroke:
         if pos is None:
             self.log.warning('get_cost() for unknown instrument {}'.format(instrument))
             return None
-        return pos or None
+        return pos[1] or None
     #
     def cancel(self, order):
         """Cancel an `order`."""
@@ -840,18 +843,31 @@ class GBroke:
                balance = float(position['accounts']['BTC']['balance'])
             else:
                balance = 0
-            self._positions["BTC-USD"] = balance
+            #self._positions["BTC-USD"] = balance
+            if 'BTC-USD' not in self._positions:
+                self._positions["BTC-USD"] = (balance, 0.0)
+            else:
+                self._positions["BTC-USD"] = (balance,self._positions["BTC-USD"][1] )
+
             if 'LTC' in position['accounts']:
                 balance =  float(position['accounts']['LTC']['balance'])
             else:
                 balance = 0
-            self._positions["LTC-USD"] = balance
+            #self._positions["LTC-USD"] = balance
+            if 'LTC-USD' not in self._positions:
+                self._positions["LTC-USD"] = (balance, 0.0)
+            else:
+                self._positions["LTC-USD"] = (balance, self._positions["LTC-USD"][1])
+
             if 'USD' in position['accounts']:
                 balance =  float(position['accounts']['USD']['balance'])
             else:
                 balance = 0
-            self._positions['USD'] = balance
-
+            #self._positions['USD'] = balance
+            if 'USD' not in self._positions:
+                self._positions["USD"] = (balance, 0.0)
+            else:
+                self._positions["USD"] = (balance, self._positions["USD"][1])
 
         # Get open orders second, since they may reference the instruments we just created above
         if 'orders' in fields:
@@ -879,6 +895,7 @@ class GBroke:
                     order.open_time = created_at / 1000
                     # o.fill_time =
                     # o.avg_price =
+                    # order.avg_price =
                     # o.profit    =
                     self._orders[order.order_id] = order
 
@@ -886,8 +903,9 @@ class GBroke:
     #
     def log_positions(self):
         """Log positions at INFO."""
-        for inst, pos in self.get_positions():
-            self.log.info('POSITION %s @ %s', pos, inst)
+        for inst, pos, cost in self.get_positions():
+            self.log.info('POSITION %d @ %.2f %s', pos, cost, inst)
+
     #
     def log_open_orders(self):
         """Log open orders at INFO."""
@@ -1067,8 +1085,9 @@ class GBroke:
     #
     #     self._call_tick_handlers(msg.tickerId, acc.peek())
     def _received(self, msg):
+        print("_received:",msg)
         if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
-            print('my order .....')
+            print('my order .....',msg)
             order = self._orders.get(msg['order_id'])
             if not order:
                 # self.log.info('EXOGENOUS ORDER #%d for %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
@@ -1079,66 +1098,32 @@ class GBroke:
                     print("return for not instrument")
                     return
                 else:
-                    size = 0.0
-                    if  msg['order_type'] == 'limit':
-                        if msg['side'] == 'buy':
-                            size = float(msg['price'])
-                        else:
-                            size -= float(msg['price'])
-                    else:
-                        if msg['side'] == 'buy':
-                            size = float(msg['funds'])
-                        else:
-                            size -= float(msg['funds'])
 
                     order = Order(id_=str(msg['order_id']),
                                   instrument=self._instruments.get(str(msg['product_id'])),
                                   price=float(msg['price']) if msg['order_type'] == 'limit'else 0.0,
-                                  quantity = float(size),
+                                  quantity = float(msg['size']) if msg['side'] == 'buy' else -float(msg['size']),
                                   filled=0,
                                   open=True,
                                   cancelled=False)
+                    order.avg_price = 0.0
                     _created_at = ciso8601.parse_datetime(msg['time'])
                     created_at = time.mktime(_created_at.timetuple())
                     order.open_time = created_at / 1000
-                    self._orders[order.order_id] = order
+                    self._orders[order.id] = order
             self._call_order_handlers(order)
-            self.reconcile(['position'])
-
+            #self.reconcile(['position'])
         else:
             pass
         pass
     def _open(self, msg):
         pass
-    def _done(self, msg):
-        if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
-            print('my order .....')
-            order = self._orders.get(msg['order_id'])
-            assert order != None
-            #self.log.info('EXOGENOUS ORDER #%d for %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
-            instrument = self._instruments.get(msg['product_id'])
-            if instrument is None:
-                self.log.error('Open order #%d for unknown instrument %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
-                return
-            else:
-                order = Order(id_=str(msg['id']),
-                              instrument=self._instruments.get(str(msg['product_id'])),
-                              price=float(msg['price']),
-                              quantity=float(msg['size']) if  msg["side"] == "buy" else -float(msg['size']),
-                              filled= float(msg['size']),
-                              open=False,
-                              cancelled=True if msg['reason'] == 'canceled' else False)
-                _created_at = ciso8601.parse_datetime(msg['created_at'])
-                created_at = time.mktime(_created_at.timetuple())
-                order.fill_time = created_at / 1000
-                pass
-            self._call_order_handlers(order)
-            self.reconcile(['position'])
-
 
     def _active(self,msg):
         pass
     def _match(self, msg):
+        print("_match:",msg)
+
         acc = self._ticumulators.get(msg['product_id'])
         if acc is None:
             self.log.warning('No Ticumulator found for ticker id %d', msg['tickerId'])
@@ -1167,7 +1152,7 @@ class GBroke:
 
         ####################################################################################
         if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
-            print('my order .....')
+            print('my order .....',msg)
             order = self._orders.get(msg['taker_order_id']) if self._orders.get(msg['taker_order_id']) else self._orders.get(msg['maker_order_id']) #TODOOOOOO
             print(self._orders.get(msg['taker_order_id']),msg['taker_order_id'])
             print(self._orders.get(msg['maker_order_id']),msg['maker_order_id'])
@@ -1179,18 +1164,46 @@ class GBroke:
                 return
             else:
 
-                if order.quantity >= 0 :#buy
-                    order.filled -= float(msg['size'])
-                else:
-                    order.filled += float(msg['size'])
-
-                _created_at = ciso8601.parse_datetime(msg['created_at'])
+                # if order.quantity >= 0 :#buy
+                #     order.filled -= float(msg['size'])
+                # else:
+                #     order.filled += float(msg['size'])
+                order.avg_price = (order.filled * order.avg_price + (abs(float(msg['size'])) * float(msg['price']))) /abs(order.filled + abs(float(msg['size'])))
+                order.filled +=  abs(float(msg['size']))
+                #order.avg_price = ((abs(order.quantity) - abs(float(msg['size'])) - abs(float(msg['remaining_size']))) * order.avg_price + (abs(float(msg['size'])) * float(msg['price']))) / abs(order.quantity)
+                _created_at = ciso8601.parse_datetime(msg['time'])
                 created_at = time.mktime(_created_at.timetuple())
                 order.fill_time = created_at / 1000
+                self._positions[order.instrument.id] = ( self._positions[order.instrument.id][0] + (abs(order.quantity) - order.filled) ,
+                                                         order.avg_price * (abs(order.quantity) - order.filled))
             self._call_order_handlers(order)
             self.reconcile(['position'])
 
         return
+    def _done(self, msg):
+        print("_done:",msg)
+        if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
+            print('my order .....',msg)
+            order = self._orders.get(msg['order_id'])
+            assert order != None
+            instrument = self._instruments.get(msg['product_id'])
+            if instrument is None:
+                self.log.error('Open order #%d for unknown instrument %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
+                return
+            else:
+                order.cancelled = True if msg['reason'] == 'canceled' else False
+                order.open = False
+                _created_at = ciso8601.parse_datetime(msg['time'])
+                created_at = time.mktime(_created_at.timetuple())
+                order.fill_time = created_at / 1000
+
+                if order.cancelled == False:
+                    self._positions[order.instrument.id] = (
+                                                            self._positions[order.instrument.id][0] + (abs(order.quantity) - order.filled),
+                                                            order.avg_price * (abs(order.quantity) - order.filled))
+                pass
+            self._call_order_handlers(order)
+            self.reconcile(['position'])
     def _change(self, msg):
        pass
        return

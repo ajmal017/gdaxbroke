@@ -83,9 +83,9 @@ InstrumentDefaults = namedtuple('InstrumentDefaults', 'symbol sec_type exchange 
 #: Default values for instrument fields
 INSTRUMENT_DEFAULTS = InstrumentDefaults(None, 'STK', 'GDAX', 'USD', None, 0.0, None)
 
-APK_KEY = 'e3036b550256e7e2109e0df5890a094e'
-API_SECRET  = 'uUhYDvydBRqhptUnYLZ3Xzy0Ln2OHygRoRGZ55iqIRMuODQbPI4d3Wc+z16Bdcq7TRcIGtgS/ySEpCDP8klq0w=='
-API_PASSPHRASE  = 'fdsafdasfsda'
+APK_KEY = 'd87ac4c2b1c533fad8dd7a4d18af2f86'
+API_SECRET  = 'BZwS3sAOGWTmHwGSzYICQ+UOer0IeugjWTr/ACpCvbQK7pBlMW27IUesIiI37GuBKyNI2xgwMUqJsrYwaxdvYg=='
+API_PASSPHRASE  = 'fdsafdsa'
 
 
 
@@ -682,7 +682,7 @@ class GBroke:
         #order = IBOrder()
         order = GOrder() #TODO
         order.m_action = 'BUY' if quantity >= 0 else 'SELL'
-        order.m_totalQuantity = abs(quantity)
+        order.m_totalQuantity = round(abs(quantity),2)
         order.m_orderType = typemap[(bool(stop), bool(limit))]
         order.m_lmtPrice = limit
         order.m_auxPrice = stop
@@ -812,6 +812,7 @@ class GBroke:
 
         if 'profile' in fields:
             position = self.auth_client.get_position()
+            print(position)
             self.log.debug('RECONCILE PROFILE')
             self.user_id = position['user_id']
             self.profile_id = position['profile_id']

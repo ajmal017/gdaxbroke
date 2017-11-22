@@ -83,9 +83,9 @@ InstrumentDefaults = namedtuple('InstrumentDefaults', 'symbol sec_type exchange 
 #: Default values for instrument fields
 INSTRUMENT_DEFAULTS = InstrumentDefaults(None, 'STK', 'GDAX', 'USD', None, 0.0, None)
 
-APK_KEY = 'd87ac4c2b1c533fad8dd7a4d18af2f86'
-API_SECRET  = 'BZwS3sAOGWTmHwGSzYICQ+UOer0IeugjWTr/ACpCvbQK7pBlMW27IUesIiI37GuBKyNI2xgwMUqJsrYwaxdvYg=='
-API_PASSPHRASE  = 'fdsafdsa'
+APK_KEY = '98c2afdfffc270cd786e7974f15fd28d'
+API_SECRET  = 'rocapnHoAKo8aIDyrytE2NfwpY2J9m2U7pJTz47dm5RLFsY7kjgGbPZude3SV1He4L+t80lqtyLjVe1MYQGb7Q=='
+API_PASSPHRASE  = 'fdsafasd'
 
 
 

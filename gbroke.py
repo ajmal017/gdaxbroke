@@ -1086,7 +1086,7 @@ class GBroke:
     #
     #     self._call_tick_handlers(msg.tickerId, acc.peek())
     def _received(self, msg):
-        print("_received:",msg)
+        #print("_received:",msg)
         if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
             print('my order .....',msg)
             order = self._orders.get(msg['order_id'])
@@ -1123,7 +1123,7 @@ class GBroke:
     def _active(self,msg):
         pass
     def _match(self, msg):
-        print("_match:",msg)
+        #print("_match:",msg)
 
         acc = self._ticumulators.get(msg['product_id'])
         if acc is None:
@@ -1184,7 +1184,7 @@ class GBroke:
 
         return
     def _done(self, msg):
-        print("_done:",msg)
+        #print("_done:",msg)
         if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
             print('my order .....',msg)
             order = self._orders.get(msg['order_id'])

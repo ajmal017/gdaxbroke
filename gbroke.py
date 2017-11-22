@@ -1176,6 +1176,9 @@ class GBroke:
                 print(order.filled,order.avg_price,float(msg['size']),msg['price'])
                 order.avg_price = (order.filled * order.avg_price + (abs(float(msg['size'])) * float(msg['price']))) /abs(order.filled + abs(float(msg['size'])))
                 order.filled +=  abs(float(msg['size']))
+                if order.filled == abs(order.quantity):
+                    print("order.filled,order.quantity:",order.filled,order.quantity)
+                    order.open = False
                 #order.avg_price = ((abs(order.quantity) - abs(float(msg['size'])) - abs(float(msg['remaining_size']))) * order.avg_price + (abs(float(msg['size'])) * float(msg['price']))) / abs(order.quantity)
                 _created_at = ciso8601.parse_datetime(msg['time'])
                 created_at = time.mktime(_created_at.timetuple())
@@ -1184,10 +1187,10 @@ class GBroke:
                 self._positions[order.instrument.id] = ( self._positions[order.instrument.id][0] + (abs(order.quantity) - order.filled) ,
                                                          order.avg_price * (abs(order.quantity) - order.filled))
             self._call_order_handlers(order)
-            self.reconcile(['position'])
+            #self.reconcile(['position'])
 
         return
-    def _done(self, msg):
+    def _done(self, msg): #sometime msg miss ?
         #print("_done:",msg)
         if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
             print('my order .....',msg)

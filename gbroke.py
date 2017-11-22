@@ -281,7 +281,8 @@ class Order:
         self.price = price
         self.quantity = quantity
         self.filled = filled
-        self.avg_price = None
+        #self.avg_price = None
+        self.avg_price = 0.0
         self.open = open
         self.cancelled = cancelled
         self.profit = 0                 # Realized profit so far for this order, net commisssions (negative for loss).  Reflects IB's (strange) accounting.
@@ -1153,7 +1154,7 @@ class GBroke:
         ####################################################################################
         if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
             print('my order .....',msg)
-            order = self._orders.get(msg['taker_order_id']) if self._orders.get(msg['taker_order_id']) else self._orders.get(msg['maker_order_id']) #TODOOOOOO
+            order = self._orders.get(msg['taker_order_id']) if None != self._orders.get(msg['taker_order_id']) else self._orders.get(msg['maker_order_id']) #TODOOOOOO
             print(self._orders.get(msg['taker_order_id']),msg['taker_order_id'])
             print(self._orders.get(msg['maker_order_id']),msg['maker_order_id'])
             assert order != None
@@ -1168,12 +1169,14 @@ class GBroke:
                 #     order.filled -= float(msg['size'])
                 # else:
                 #     order.filled += float(msg['size'])
+                print(order.filled,order.avg_price,float(msg['size']),msg['price'])
                 order.avg_price = (order.filled * order.avg_price + (abs(float(msg['size'])) * float(msg['price']))) /abs(order.filled + abs(float(msg['size'])))
                 order.filled +=  abs(float(msg['size']))
                 #order.avg_price = ((abs(order.quantity) - abs(float(msg['size'])) - abs(float(msg['remaining_size']))) * order.avg_price + (abs(float(msg['size'])) * float(msg['price']))) / abs(order.quantity)
                 _created_at = ciso8601.parse_datetime(msg['time'])
                 created_at = time.mktime(_created_at.timetuple())
                 order.fill_time = created_at / 1000
+                print(order.instrument.id,self._positions[order.instrument.id],order.quantity,order.filled,order.avg_price)
                 self._positions[order.instrument.id] = ( self._positions[order.instrument.id][0] + (abs(order.quantity) - order.filled) ,
                                                          order.avg_price * (abs(order.quantity) - order.filled))
             self._call_order_handlers(order)

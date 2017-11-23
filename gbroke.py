@@ -701,7 +701,7 @@ class GBroke:
             res = self.auth_client.buy(#client_oid = order.m_orderId*10,
                                  type = order.m_orderType,
                                  #price=order.m_lmtPrice,  # USD  #TODO FOR STOP
-                                 overdraft_enable = True,
+                                 #overdraft_enable = True,
                                  size=str(order.m_totalQuantity),  # BTC
                                  product_id=instrument.id)
             print("============================order res:",res) #TODO  https://api.coinbase.com/v2/time
@@ -709,7 +709,7 @@ class GBroke:
             res = self.auth_client.sell(#client_oid=order.m_orderId,
                                  type=order.m_orderType,
                                  #price=order.m_lmtPrice,  # USD  #TODO FOR STOP
-                                 overdraft_enable=True,
+                                 #overdraft_enable=True,
                                  size=order.m_totalQuantity,  # BTC
                                  product_id=instrument.id)
             print("============================order res",res)
@@ -1476,7 +1476,8 @@ class Ticumulator:
         self.lastsize = float('NaN')
         self.lasttime = float('NaN')
         #self.volume = float('NaN')
-        self.open_interest = float('NaN')
+        #self.open_interest = float('NaN')
+        self.open_interest = 0 #TODO
         # Computed for bar
         self.open = float('NaN')
         self.high = float('NaN')

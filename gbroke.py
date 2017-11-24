@@ -1228,6 +1228,8 @@ class GBroke:
         order = self._orders.get(msg['taker_order_id']) if None != self._orders.get(msg['taker_order_id']) else self._orders.get(msg['maker_order_id']) #TODOOOOOO
         print(self._orders.get(msg['taker_order_id']),msg['taker_order_id'])
         print(self._orders.get(msg['maker_order_id']),msg['maker_order_id'])
+        if order == None:
+            return
         assert order != None
 
         instrument = self._instruments.get(msg['product_id'])
@@ -1260,6 +1262,8 @@ class GBroke:
         #if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
         self.log.debug('my order .....',msg)
         order = self._orders.get(msg['order_id'])
+        if order == None:
+            return
         assert order != None
         instrument = self._instruments.get(msg['product_id'])
         if instrument is None:

@@ -563,7 +563,7 @@ class GBroke:
                 print("Let's count the messages!")
 
             def on_message(self, message):
-                #print("bookorder message:",message)
+                print("bookorder message:",message)
                 self._context.connected = True  # TODO
                 super(WSClient, self).on_message(message)
                 self._context._handle_message(message)
@@ -594,7 +594,7 @@ class GBroke:
                 # print('$$$$:',type(bid),bid,bids[-1]['size'])
                 acc.add('bidsize', float(bids[-1]['size']) if bid_depth > 0.0 else 0.0)
                 acc.add('asksize', float(asks[-1]['size']) if ask_depth > 0.0 else 0.0)
-                #print("bookorder message over:",message)
+                print("bookorder message over:")
 
 
             def on_close(self):
@@ -1251,7 +1251,6 @@ class GBroke:
                                                          order.avg_price * (abs(order.quantity) - order.filled))
             self._call_order_handlers(order)
             #self.reconcile(['position'])
-
         return
     def _done(self, msg): #sometime msg miss ?
         #print("_done:",msg)

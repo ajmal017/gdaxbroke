@@ -566,7 +566,10 @@ class GBroke:
                 print("bookorder message:",message)
                 self._context.connected = True  # TODO
                 super(WSClient, self).on_message(message)
+                print("bookorder message2:",message)
+
                 self._context._handle_message(message)
+                print("bookorder message3:",message)
 
                 bid = self.get_bid()
                 bids = self.get_bids(bid)
@@ -595,6 +598,7 @@ class GBroke:
                 # print('$$$$:',type(bid),bid,bids[-1]['size'])
                 acc.add('bidsize', float(bids[-1]['size']) if bid_depth > 0.0 else 0.0)
                 acc.add('asksize', float(asks[-1]['size']) if ask_depth > 0.0 else 0.0)
+                print("bookorder message4:",message)
 
 
             def on_close(self):

@@ -1152,40 +1152,39 @@ class GBroke:
     #     self._call_tick_handlers(msg.tickerId, acc.peek())
     def _received(self, msg):
         #print("profile_id:",self.profile_id,msg['profile_id'],msg['client_oid'],type(msg['profile_id']),type(self.profile_id))
-        if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
-            self.log.info('my order .....%s',msg)
-            order = self._orders.get(msg['client_oid'] if 'client_oid' in msg['client_oid'] else msg['order_id'] )
-            if not order:
-                self.log.warning('Manual ORDER Received %s', msg['order_id'])
-                instrument = self._instruments.get(msg['product_id'])
-                if instrument is None:
-                    self.log.error('Open order #%d for unknown instrument %s', msg.orderId,
-                                   instrument_tuple_from_contract(msg.contract))
-                    print("return for not instrument...................................")
-                    return
+        #if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
+        self.log.info('my order .....%s',msg)
+        order = self._orders.get(msg['client_oid'] if 'client_oid' in msg['client_oid'] else msg['order_id'] )
+        if not order:
+            self.log.warning('Manual ORDER Received %s', msg['order_id'])
+            instrument = self._instruments.get(msg['product_id'])
+            if instrument is None:
+                self.log.error('Open order #%d for unknown instrument %s', msg.orderId,
+                               instrument_tuple_from_contract(msg.contract))
+                print("return for not instrument...................................")
+                return
+            else:
+                if msg['order_type'] == 'limit':
+                    quantity = float(msg['size']) if msg['side'] == 'buy' else -float(msg['size'])
                 else:
-                    if msg['order_type'] == 'limit':
-                        quantity = float(msg['size']) if msg['side'] == 'buy' else -float(msg['size'])
-                    else:
-                        quantity = 0.0
-                    order = Order(id_=str(msg['order_id']) ,
-                                  instrument=self._instruments.get(str(msg['product_id'])),
-                                  price=float(msg['price']) if msg['order_type'] == 'limit'else 0.0,
-                                  quantity = quantity,
-                                  filled=0,
-                                  open=True,
-                                  cancelled=False)
+                    quantity = 0.0
+                order = Order(id_=str(msg['order_id']) ,
+                              instrument=self._instruments.get(str(msg['product_id'])),
+                              price=float(msg['price']) if msg['order_type'] == 'limit'else 0.0,
+                              quantity = quantity,
+                              filled=0,
+                              open=True,
+                              cancelled=False)
 
-            order.id = str(msg['order_id'])
-            order.avg_price = 0.0
-            _created_at = ciso8601.parse_datetime(msg['time'])
-            created_at = time.mktime(_created_at.timetuple())
-            order.open_time = created_at / 1000
-            self._orders[order.id] = order
-            self._call_order_handlers(order)
-            #self.reconcile(['position'])
-        else:
-            pass
+        order.id = str(msg['order_id'])
+        order.avg_price = 0.0
+        _created_at = ciso8601.parse_datetime(msg['time'])
+        created_at = time.mktime(_created_at.timetuple())
+        order.open_time = created_at / 1000
+        self._orders[order.id] = order
+        self._call_order_handlers(order)
+        #self.reconcile(['position'])
+
     def _open(self, msg):
         pass
 
@@ -1220,62 +1219,62 @@ class GBroke:
         acc.add('lasttime', lasttime / 1000)
 
         ####################################################################################
-        if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
-            self.log.debug('my order .....',msg)
-            order = self._orders.get(msg['taker_order_id']) if None != self._orders.get(msg['taker_order_id']) else self._orders.get(msg['maker_order_id']) #TODOOOOOO
-            print(self._orders.get(msg['taker_order_id']),msg['taker_order_id'])
-            print(self._orders.get(msg['maker_order_id']),msg['maker_order_id'])
-            assert order != None
+        #if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
+        self.log.debug('my order .....',msg)
+        order = self._orders.get(msg['taker_order_id']) if None != self._orders.get(msg['taker_order_id']) else self._orders.get(msg['maker_order_id']) #TODOOOOOO
+        print(self._orders.get(msg['taker_order_id']),msg['taker_order_id'])
+        print(self._orders.get(msg['maker_order_id']),msg['maker_order_id'])
+        assert order != None
 
-            instrument = self._instruments.get(msg['product_id'])
-            if instrument is None:
-                self.log.error('Open order #%d for unknown instrument %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
-                return
-            else:
-                # if order.quantity >= 0 :#buy
-                #     order.filled -= float(msg['size'])
-                # else:
-                #     order.filled += float(msg['size'])
-                #print(order.filled,order.avg_price,float(msg['size']),msg['price'])
-                order.avg_price = (order.filled * order.avg_price + (abs(float(msg['size'])) * float(msg['price']))) /abs(order.filled + abs(float(msg['size'])))
-                order.filled +=  abs(float(msg['size']))
-                if order.filled == abs(order.quantity):
-                    self.log.debug("order.filled,order.quantity:",order.filled,order.quantity)
-                    order.open = False
-                #order.avg_price = ((abs(order.quantity) - abs(float(msg['size'])) - abs(float(msg['remaining_size']))) * order.avg_price + (abs(float(msg['size'])) * float(msg['price']))) / abs(order.quantity)
-                _created_at = ciso8601.parse_datetime(msg['time'])
-                created_at = time.mktime(_created_at.timetuple())
-                order.fill_time = created_at / 1000
-                print(order.instrument.id,self._positions[order.instrument.id],order.quantity,order.filled,order.avg_price)
-                self._positions[order.instrument.id] = ( self._positions[order.instrument.id][0] + (abs(order.quantity) - order.filled) ,
-                                                         order.avg_price * (abs(order.quantity) - order.filled))
-            self._call_order_handlers(order)
+        instrument = self._instruments.get(msg['product_id'])
+        if instrument is None:
+            self.log.error('Open order #%d for unknown instrument %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
+            return
+        else:
+            # if order.quantity >= 0 :#buy
+            #     order.filled -= float(msg['size'])
+            # else:
+            #     order.filled += float(msg['size'])
+            #print(order.filled,order.avg_price,float(msg['size']),msg['price'])
+            order.avg_price = (order.filled * order.avg_price + (abs(float(msg['size'])) * float(msg['price']))) /abs(order.filled + abs(float(msg['size'])))
+            order.filled +=  abs(float(msg['size']))
+            if order.filled == abs(order.quantity):
+                self.log.debug("order.filled,order.quantity:",order.filled,order.quantity)
+                order.open = False
+            #order.avg_price = ((abs(order.quantity) - abs(float(msg['size'])) - abs(float(msg['remaining_size']))) * order.avg_price + (abs(float(msg['size'])) * float(msg['price']))) / abs(order.quantity)
+            _created_at = ciso8601.parse_datetime(msg['time'])
+            created_at = time.mktime(_created_at.timetuple())
+            order.fill_time = created_at / 1000
+            print(order.instrument.id,self._positions[order.instrument.id],order.quantity,order.filled,order.avg_price)
+            self._positions[order.instrument.id] = ( self._positions[order.instrument.id][0] + (abs(order.quantity) - order.filled) ,
+                                                     order.avg_price * (abs(order.quantity) - order.filled))
+        self._call_order_handlers(order)
             #self.reconcile(['position'])
         return
     def _done(self, msg): #sometime msg miss ?
         #print("_done:",msg)
-        if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
-            self.log.debug('my order .....',msg)
-            order = self._orders.get(msg['order_id'])
-            assert order != None
-            instrument = self._instruments.get(msg['product_id'])
-            if instrument is None:
-                self.log.error('Open order #%d for unknown instrument %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
-                return
-            else:
-                order.cancelled = True if msg['reason'] == 'canceled' else False
-                order.open = False
-                _created_at = ciso8601.parse_datetime(msg['time'])
-                created_at = time.mktime(_created_at.timetuple())
-                order.fill_time = created_at / 1000
+        #if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
+        self.log.debug('my order .....',msg)
+        order = self._orders.get(msg['order_id'])
+        assert order != None
+        instrument = self._instruments.get(msg['product_id'])
+        if instrument is None:
+            self.log.error('Open order #%d for unknown instrument %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
+            return
+        else:
+            order.cancelled = True if msg['reason'] == 'canceled' else False
+            order.open = False
+            _created_at = ciso8601.parse_datetime(msg['time'])
+            created_at = time.mktime(_created_at.timetuple())
+            order.fill_time = created_at / 1000
 
-                if order.cancelled == False:
-                    self._positions[order.instrument.id] = (
-                                                            self._positions[order.instrument.id][0] + (abs(order.quantity) - order.filled),
-                                                            order.avg_price * (abs(order.quantity) - order.filled))
-                pass
-            self._call_order_handlers(order)
-            self.reconcile(['position'])
+            if order.cancelled == False:
+                self._positions[order.instrument.id] = (
+                                                        self._positions[order.instrument.id][0] + (abs(order.quantity) - order.filled),
+                                                        order.avg_price * (abs(order.quantity) - order.filled))
+            pass
+        self._call_order_handlers(order)
+        self.reconcile(['position'])
     def _change(self, msg):
        pass
        return

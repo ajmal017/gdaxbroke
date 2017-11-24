@@ -1174,8 +1174,8 @@ class GBroke:
                                   filled=0,
                                   open=True,
                                   cancelled=False)
-            else:
-                del self._orders[order.id]
+            print("received over 0.....")
+
             order.id = str(msg['order_id'])
             order.avg_price = 0.0
             _created_at = ciso8601.parse_datetime(msg['time'])
@@ -1186,6 +1186,7 @@ class GBroke:
             #self.reconcile(['position'])
         else:
             pass
+        print("received over .....")
 
     def _open(self, msg):
         pass

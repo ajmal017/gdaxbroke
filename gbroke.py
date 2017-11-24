@@ -757,7 +757,6 @@ class GBroke:
         #self._conn.placeOrder(order_id, instrument._contract, order)        # This needs to come after updating self._orders
         print("============================order.m_action:",order.m_action,order.m_orderType,order.m_orderId,instrument.id,order.m_totalQuantity,order.m_lmtPrice)
         order_id = str(uuid.uuid4())
-        print("----------------------order id:",order_id)
         if not self._orders.get(order_id):
             self._orders[order_id] = Order._from_gb(order, order_id, instrument)
         if order.m_action == 'BUY':

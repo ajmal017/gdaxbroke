@@ -1165,7 +1165,9 @@ class GBroke:
             print("-------------------------??????2------------------------",order)
 
             if not order:
-                self.log.warning('Manual ORDER #%d for %s', msg.orderId, instrument_tuple_from_contract(msg.contract))
+                print("-------------------------??????3------------------------", msg['order_id'])
+
+                self.log.warning('Manual ORDER Received %s', msg['order_id'])
                 instrument = self._instruments.get(msg['product_id'])
                 if instrument is None:
                     self.log.error('Open order #%d for unknown instrument %s', msg.orderId,
@@ -1184,7 +1186,7 @@ class GBroke:
                                   filled=0,
                                   open=True,
                                   cancelled=False)
-            print("received over 0.....")
+            print("received over 0.....",order.id)
 
             order.id = str(msg['order_id'])
             order.avg_price = 0.0

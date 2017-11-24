@@ -517,32 +517,96 @@ class GBroke:
         :param bar_size: The period of a bar in seconds.  Ignored for ``bar_type == 'tick'``.
         """
 
-        class WSClient(gdax.WebsocketClient):
+        # class WSClient(gdax.WebsocketClient):
+        #     def __init__(self,context,url,products):
+        #         print(url)
+        #         super(WSClient, self).__init__(url = url,
+        #                                        products = products,
+        #                                        auth = True,
+        #                                        api_key = APK_KEY,
+        #                                        api_secret = API_SECRET,
+        #                                        api_passphrase = API_PASSPHRASE
+        #                                        )  #
+        #         self.context = context
+        #
+        #     #def initialize(self,gbroke):
+        #     #    self.broke = gbroke
+        #     def on_open(self):
+        #         self.message_count = 0
+        #         print("Let's count the messages!")
+        #
+        #     def on_message(self, msg):
+        #         self.message_count += 1
+        #         self.context.connected = True  # TODO
+        #         self.context._handle_message(msg)
+        #     def on_close(self):
+        #         print("-- Goodbye! --")
+        #         self.connected = False
+        #         self.context._call_alert_handlers('Disconnect')
+
+
+        class WSClient(gdax.OrderBook):
             def __init__(self,context,url,products):
                 print(url)
                 super(WSClient, self).__init__(url = url,
-                                               products = products,
+                                               product_id = products,
                                                auth = True,
                                                api_key = APK_KEY,
                                                api_secret = API_SECRET,
                                                api_passphrase = API_PASSPHRASE
-                                               )  #
-                self.context = context
+                                               )#
+                self._context = context
+                self._bid = None
+                self._ask = None
+                self._bid_depth = None
+                self._ask_depth = None
+                self._products = products
+                print("products:",self._products)
 
-            #def initialize(self,gbroke):
-            #    self.broke = gbroke
             def on_open(self):
                 self.message_count = 0
                 print("Let's count the messages!")
 
-            def on_message(self, msg):
+            def on_message(self, message):
+                #print("bookorder message:",message)
+                self._context.connected = True  # TODO
                 self.message_count += 1
-                self.context.connected = True  # TODO
-                self.context._handle_message(msg)
+                super(WSClient, self).on_message(message)
+                self._context._handle_message(message)
+                bid = self.get_bid()
+                bids = self.get_bids(bid)
+                bid_depth = sum([b['size'] for b in bids])
+                ask = self.get_ask()
+                asks = self.get_asks(ask)
+                ask_depth = sum([a['size'] for a in asks])
+                if self._bid == bid and self._ask == ask and self._bid_depth == bid_depth and self._ask_depth == ask_depth:
+                    # If there are no changes to the bid-ask spread since the last update, no need to print
+                    pass
+                else:
+                    # If there are differences, update the cache
+                    self._bid = bid
+                    self._ask = ask
+                    self._bid_depth = bid_depth
+                    self._ask_depth = ask_depth
+                    print('{} {} bid: {:.3f} @ {:.2f}\task: {:.3f} @ {:.2f}'.format(
+                       dt.datetime.now(), self.product_id, bid_depth, bid, ask_depth, ask))
+                    # print("#########################################################",float(bid),float(ask),self.get_bid(bid),self.get_ask(ask))
+                acc = self._context._ticumulators.get(self._products)
+                acc.add('bid_depth', float(bid_depth))
+                acc.add('ask_depth', float(ask_depth))
+                # print("===============bid:",bid,bid['price'])
+                acc.add('bid', float(bid))
+                acc.add('ask', float(ask))
+                # print('$$$$:',type(bid),bid,bids[-1]['size'])
+                acc.add('bidsize', float(bids[-1]['size']) if bid_depth > 0.0 else 0.0)
+                acc.add('asksize', float(asks[-1]['size']) if ask_depth > 0.0 else 0.0)
+
+
             def on_close(self):
                 print("-- Goodbye! --")
                 self.connected = False
-                self.context._call_alert_handlers('Disconnect')
+                self._context._call_alert_handlers('Disconnect')
+
 
         assert bar_type in ('time', 'tick')
         assert bar_size > 0
@@ -597,57 +661,57 @@ class GBroke:
 
         return instrument
 
-    def watch_bookorder(self, instrument: Union[str, ContractTuple, int, Instrument]):
-        class OrderBookConsole(gdax.OrderBook):
-            ''' Logs real-time changes to the bid-ask spread to the console '''
-            def __init__(self,context,url,product_id=None):
-                super(OrderBookConsole, self).__init__(url = url,product_id=product_id)
-
-                # latest values of bid-ask spread
-                self._bid = None
-                self._ask = None
-                self._bid_depth = None
-                self._ask_depth = None
-                self._context = context
-                self._product_id = product_id
-
-            def on_message(self, message):
-
-                super(OrderBookConsole, self).on_message(message)
-                #print("bookorder message:",message)
-                # Calculate newest bid-ask spread
-                bid = self.get_bid()
-                bids = self.get_bids(bid)
-                bid_depth = sum([b['size'] for b in bids])
-                ask = self.get_ask()
-                asks = self.get_asks(ask)
-                ask_depth = sum([a['size'] for a in asks])
-
-                if self._bid == bid and self._ask == ask and self._bid_depth == bid_depth and self._ask_depth == ask_depth:
-                    # If there are no changes to the bid-ask spread since the last update, no need to print
-                    pass
-                else:
-                    # If there are differences, update the cache
-                    self._bid = bid
-                    self._ask = ask
-                    self._bid_depth = bid_depth
-                    self._ask_depth = ask_depth
-                    #print('{} {} bid: {:.3f} @ {:.2f}\task: {:.3f} @ {:.2f}'.format(
-                    #    dt.datetime.now(), self.product_id, bid_depth, bid, ask_depth, ask))
-                    #print("#########################################################",float(bid),float(ask),self.get_bid(bid),self.get_ask(ask))
-                acc = self._context._ticumulators.get(self._product_id)
-                acc.add('bid_depth',float(bid_depth))
-                acc.add('ask_depth',float(ask_depth))
-                #print("===============bid:",bid,bid['price'])
-                acc.add('bid',float(bid))
-                acc.add('ask',float(ask))
-
-                #print('$$$$:',type(bid),bid,bids[-1]['size'])
-                acc.add('bidsize',float(bids[-1]['size']) if bid_depth > 0.0 else 0.0)
-                acc.add('asksize',float(asks[-1]['size']) if ask_depth > 0.0 else 0.0)
+    # def watch_bookorder(self, instrument: Union[str, ContractTuple, int, Instrument]):
+    #     class OrderBookConsole(gdax.OrderBook):
+    #         ''' Logs real-time changes to the bid-ask spread to the console '''
+    #         def __init__(self,context,url,product_id=None):
+    #             super(OrderBookConsole, self).__init__(url = url,product_id=product_id)
+    #
+    #             # latest values of bid-ask spread
+    #             self._bid = None
+    #             self._ask = None
+    #             self._bid_depth = None
+    #             self._ask_depth = None
+    #             self._context = context
+    #             self._product_id = product_id
+    #
+    #         def on_message(self, message):
+    #
+    #             super(OrderBookConsole, self).on_message(message)
+    #             #print("bookorder message:",message)
+    #             # Calculate newest bid-ask spread
+    #             bid = self.get_bid()
+    #             bids = self.get_bids(bid)
+    #             bid_depth = sum([b['size'] for b in bids])
+    #             ask = self.get_ask()
+    #             asks = self.get_asks(ask)
+    #             ask_depth = sum([a['size'] for a in asks])
+    #
+    #             if self._bid == bid and self._ask == ask and self._bid_depth == bid_depth and self._ask_depth == ask_depth:
+    #                 # If there are no changes to the bid-ask spread since the last update, no need to print
+    #                 pass
+    #             else:
+    #                 # If there are differences, update the cache
+    #                 self._bid = bid
+    #                 self._ask = ask
+    #                 self._bid_depth = bid_depth
+    #                 self._ask_depth = ask_depth
+    #                 #print('{} {} bid: {:.3f} @ {:.2f}\task: {:.3f} @ {:.2f}'.format(
+    #                 #    dt.datetime.now(), self.product_id, bid_depth, bid, ask_depth, ask))
+    #                 #print("#########################################################",float(bid),float(ask),self.get_bid(bid),self.get_ask(ask))
+    #             acc = self._context._ticumulators.get(self._product_id)
+    #             acc.add('bid_depth',float(bid_depth))
+    #             acc.add('ask_depth',float(ask_depth))
+    #             #print("===============bid:",bid,bid['price'])
+    #             acc.add('bid',float(bid))
+    #             acc.add('ask',float(ask))
+    #
+    #             #print('$$$$:',type(bid),bid,bids[-1]['size'])
+    #             acc.add('bidsize',float(bids[-1]['size']) if bid_depth > 0.0 else 0.0)
+    #             acc.add('asksize',float(asks[-1]['size']) if ask_depth > 0.0 else 0.0)
         #print("order book start :",self.wsurl)
-        order_book = OrderBookConsole(self,url = self.wsurl,product_id=instrument.id)
-        order_book.start()
+        # order_book = OrderBookConsole(self,url = self.wsurl,product_id=instrument.id)
+        # order_book.start()
         # try:
         #     while True:
         #         time.sleep(10)
@@ -701,7 +765,7 @@ class GBroke:
             res = self.auth_client.buy(#client_oid = order.m_orderId*10,
                                  type = order.m_orderType,
                                  #price=order.m_lmtPrice,  # USD  #TODO FOR STOP
-                                 #overdraft_enable = True,
+                                 overdraft_enable = True,
                                  size=str(order.m_totalQuantity),  # BTC
                                  product_id=instrument.id)
             print("============================order res:",res) #TODO  https://api.coinbase.com/v2/time
@@ -709,7 +773,7 @@ class GBroke:
             res = self.auth_client.sell(#client_oid=order.m_orderId,
                                  type=order.m_orderType,
                                  #price=order.m_lmtPrice,  # USD  #TODO FOR STOP
-                                 #overdraft_enable=True,
+                                 overdraft_enable=True,
                                  size=order.m_totalQuantity,  # BTC
                                  product_id=instrument.id)
             print("============================order res",res)

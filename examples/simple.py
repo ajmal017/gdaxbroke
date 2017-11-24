@@ -17,7 +17,7 @@ print('pos:',pos)
 #gb.watch_bookorder(instrument)
 sleep(10)
 
-gb.order_target(instrument,5.5)
+gb.order_target(instrument,5.0)
 
 print('pos:',gb.get_position(instrument))
 sleep(10000)

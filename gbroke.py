@@ -1154,11 +1154,10 @@ class GBroke:
         #print("profile_id:",self.profile_id,msg['profile_id'],msg['client_oid'],type(msg['profile_id']),type(self.profile_id))
         #if 'profile_id' in msg and msg['profile_id'] == self.profile_id:
         self.log.info('my order .....%s',msg)
-        if 'client_oid' in msg['client_oid']:
+        if 'client_oid' in msg:
             oid = msg['client_oid']
         else:
             oid = msg['order_id']
-        print(oid)
         order = self._orders.get(oid)
         if not order:
             self.log.warning('Manual ORDER Received %s', msg['order_id'])

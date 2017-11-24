@@ -780,7 +780,10 @@ class GBroke:
         if 'id' in res:
             return copy(self._orders[order_id])
         else:
-            del self._orders[order_id]
+            try:
+                del self._orders[order_id]
+            except:
+                pass
             return None
     #
     def order_target(self, instrument, quantity, limit=0.0, stop=0.0):

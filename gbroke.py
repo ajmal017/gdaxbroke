@@ -1197,7 +1197,7 @@ class GBroke:
         if acc is None:
             self.log.warning('No Ticumulator found for ticker id %d', msg['tickerId'])
             return
-        print(msg) #TODO
+        #print(msg) #TODO
         # if msg['side'] == 'buy':
         #     ask = float(msg['price'])
         #     asksize = float(msg['size'])

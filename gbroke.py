@@ -84,9 +84,9 @@ InstrumentDefaults = namedtuple('InstrumentDefaults', 'symbol sec_type exchange 
 #: Default values for instrument fields
 INSTRUMENT_DEFAULTS = InstrumentDefaults(None, 'STK', 'GDAX', 'USD', None, 0.0, None)
 
-APK_KEY = '98c2afdfffc270cd786e7974f15fd28d'
-API_SECRET  = 'rocapnHoAKo8aIDyrytE2NfwpY2J9m2U7pJTz47dm5RLFsY7kjgGbPZude3SV1He4L+t80lqtyLjVe1MYQGb7Q=='
-API_PASSPHRASE  = 'fdsafasd'
+APK_KEY = '4c10d0eeb7622357406aa3baa67c48b5'
+API_SECRET  = 'iOxXS0m/M0ZuNGbFp/qeeRCUsjdZ31bbJEL8zlv04yOg/eTPjHIKc8J8vF3JG056ykx+UxSI9omLblO3cY2RhA=='
+API_PASSPHRASE  = '43241234'
 
 
 
@@ -741,7 +741,7 @@ class GBroke:
         #order = IBOrder()
         order = GOrder() #TODO
         order.m_action = 'BUY' if quantity >= 0 else 'SELL'
-        order.m_totalQuantity = round(abs(quantity),2)
+        order.m_totalQuantity = round(abs(quantity),3)
         order.m_orderType = typemap[(bool(stop), bool(limit))]
         order.m_lmtPrice = limit
         order.m_auxPrice = stop
@@ -764,6 +764,9 @@ class GBroke:
                                  type = order.m_orderType,
                                  #price=order.m_lmtPrice,  # USD  #TODO FOR STOP
                                  overdraft_enable = True,
+                                 time_in_force = "GTT", #TODO
+                                 cancel_after='min',
+                                 post_only = True,
                                  size=order.m_totalQuantity,  # BTC
                                  product_id=instrument.id)
             print("============================order res:",res) #TODO  https://api.coinbase.com/v2/time
@@ -772,6 +775,9 @@ class GBroke:
                                  type=order.m_orderType,
                                  #price=order.m_lmtPrice,  # USD  #TODO FOR STOP
                                  overdraft_enable=True,
+                                 time_in_force="GTT",
+                                 cancel_after = 'min',
+                                 post_only=True,
                                  size=order.m_totalQuantity,  # BTC
                                  product_id=instrument.id)
             print("============================order res",res)
@@ -876,6 +882,7 @@ class GBroke:
 
         if 'profile' in fields:
             position = self.auth_client.get_position()
+            print(position)
             self.log.debug('RECONCILE PROFILE')
             self.user_id = position['user_id']
             self.profile_id = position['profile_id']
